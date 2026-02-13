@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 
 const Homepage = () => {
     const [agentA, setAgentA] = useState('');
@@ -202,9 +203,12 @@ const Homepage = () => {
 
             {/* Footer */}
             <footer className="py-12 text-center">
-                <p className="text-lg md:text-xl font-body text-text-light/60 tracking-wide">
+                <p className="text-lg md:text-xl font-body text-text-light/60 tracking-wide mb-4">
                     Think. Commit. Dominate.
                 </p>
+                <Link to="/analytics" className="text-sm opacity-50 hover:opacity-100 transition-opacity" style={{ color: '#7C3AED' }}>
+                    [VIEW ANALYTICS INTELLIGENCE]
+                </Link>
             </footer>
         </div>
     );
