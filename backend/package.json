@@ -18,5 +18,9 @@
     "nodemon": "^3.1.11",
     "npm": "^11.10.0",
     "viem": "^2.45.3"
+  },
+  "dependencies": {
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.1"
   }
 }

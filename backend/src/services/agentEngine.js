@@ -29,30 +29,40 @@ export async function runMatch(agentAName, agentBName) {
         const matchId = BigInt(receipt.logs[0].topics[1]);
         console.log(`Match Created! ID: ${matchId}`);
 
-        // 2. Join Match
-        console.log("Joining match...");
-        const joinHash = await joinMatch(matchId);
-        await publicClient.waitForTransactionReceipt({ hash: joinHash });
-        console.log("Player 2 Joined.");
+        // Handle the rest of the match in the background
+        (async () => {
+            try {
+                // 2. Join Match
+                console.log(`Match ${matchId}: Joining...`);
+                const joinHash = await joinMatch(matchId);
+                await publicClient.waitForTransactionReceipt({ hash: joinHash });
+                console.log(`Match ${matchId}: Player 2 Joined.`);
 
-        const engine = new GameEngine(matchId, agentAName, agentBName);
-        console.log("Starting Rounds...");
+                const engine = new GameEngine(matchId, agentAName, agentBName);
+                console.log(`Match ${matchId}: Starting Rounds...`);
 
-        for (let i = 1; i <= 5; i++) {
-            await engine.playRound(i);
-        }
+                for (let i = 1; i <= 5; i++) {
+                    await engine.playRound(i);
+                }
 
-        console.log("\n=== Match Completed ===");
-        const finalState = await getMatchState(matchId);
-        // Determine winner locally from state for log
-        const w1 = Number(finalState.player1.wins);
-        const w2 = Number(finalState.player2.wins);
-        if (w1 > w2) console.log(`Winner: Agent A (${agentAName})`);
-        else if (w2 > w1) console.log(`Winner: Agent B (${agentBName})`);
-        else console.log("Result: Tie");
+                console.log(`\n=== Match ${matchId} Completed ===`);
+                const finalState = await getMatchState(matchId);
+                // Determine winner locally from state for log
+                const w1 = Number(finalState.player1.wins);
+                const w2 = Number(finalState.player2.wins);
+                if (w1 > w2) console.log(`Match ${matchId}: Winner: Agent A (${agentAName})`);
+                else if (w2 > w1) console.log(`Match ${matchId}: Winner: Agent B (${agentBName})`);
+                else console.log(`Match ${matchId}: Result: Tie`);
+            } catch (bgError) {
+                console.error(`Match ${matchId} Background Execution Error:`, bgError);
+            }
+        })();
+
+        return matchId;
 
     } catch (e) {
-        console.error("Match Execution Error:", e);
+        console.error("Match Creation Error:", e);
+        throw e;
     }
 }
 
