@@ -2,12 +2,14 @@ import { createMatch, joinMatch, commitBid, revealBid, getMatchState, walletClie
 import { aggressive } from '../agents/aggressive.js';
 import { conservative } from '../agents/conservative.js';
 import { monteCarlo } from '../agents/monteCarlo.js';
-import { toHex } from 'viem';
+import { createMcpAgent } from '../agents/mcp.js';
+import { toHex, formatEther } from 'viem';
 
 const AGENTS = {
     'aggressive': aggressive,
     'conservative': conservative,
     'monteCarlo': monteCarlo
+    // 'mcp' is handled specially in GameEngine constructor
 };
 
 // Helper to generate salt
@@ -69,8 +71,8 @@ export async function runMatch(agentAName, agentBName) {
 export class GameEngine {
     constructor(matchId, agentAName, agentBName) {
         this.matchId = matchId;
-        this.agentA = AGENTS[agentAName];
-        this.agentB = AGENTS[agentBName];
+        this.agentA = agentAName === 'mcp' ? createMcpAgent(matchId, 'A') : AGENTS[agentAName];
+        this.agentB = agentBName === 'mcp' ? createMcpAgent(matchId, 'B') : AGENTS[agentBName];
         this.history = [];
     }
 
@@ -83,8 +85,8 @@ export class GameEngine {
         // Transform to local state for agents
         const gameStateA = {
             roundNumber: Number(state.currentRound),
-            myBalance: Number(state.player1.balance), // assuming A is p1
-            opponentBalance: Number(state.player2.balance),
+            myBalance: Number(formatEther(state.player1.balance)),
+            opponentBalance: Number(formatEther(state.player2.balance)),
             myWins: Number(state.player1.wins),
             opponentWins: Number(state.player2.wins),
             opponentPreviousBids: this.history.map(h => h.p2Bid)
@@ -92,16 +94,16 @@ export class GameEngine {
 
         const gameStateB = {
             roundNumber: Number(state.currentRound),
-            myBalance: Number(state.player2.balance),
-            opponentBalance: Number(state.player1.balance),
+            myBalance: Number(formatEther(state.player2.balance)),
+            opponentBalance: Number(formatEther(state.player1.balance)),
             myWins: Number(state.player2.wins),
             opponentWins: Number(state.player1.wins),
             opponentPreviousBids: this.history.map(h => h.p1Bid)
         };
 
-        // 2. Decide Bids
-        const decisionA = this.agentA.decide(gameStateA);
-        const decisionB = this.agentB.decide(gameStateB);
+        // 2. Decide Bids (await supports both sync and async agents)
+        const decisionA = await this.agentA.decide(gameStateA);
+        const decisionB = await this.agentB.decide(gameStateB);
 
         console.log(`Agent A [${decisionA.reason}] -> Bid: ${decisionA.bid}`);
         console.log(`Agent B [${decisionB.reason}] -> Bid: ${decisionB.bid}`);
