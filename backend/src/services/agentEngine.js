@@ -2,12 +2,14 @@ import { createMatch, joinMatch, commitBid, revealBid, getMatchState, walletClie
 import { aggressive } from '../agents/aggressive.js';
 import { conservative } from '../agents/conservative.js';
 import { monteCarlo } from '../agents/monteCarlo.js';
+import { mcpAgent } from '../agents/mcpAgent.js';
 import { toHex } from 'viem';
 
 const AGENTS = {
     'aggressive': aggressive,
     'conservative': conservative,
-    'monteCarlo': monteCarlo
+    'monteCarlo': monteCarlo,
+    'mcpAgent': mcpAgent
 };
 
 // Helper to generate salt
