@@ -88,7 +88,7 @@ const AnalyticsDashboard = () => {
                                         <td className="p-4 text-[#F3F4F6] opacity-80">{agent.matches}</td>
                                         <td className="p-4 text-[#F3F4F6] opacity-80">{agent.wins}</td>
                                         <td className={`p-4 font-bold ${parseInt(agent.winRate) >= 65 ? 'text-[#00F5A0]' :
-                                                parseInt(agent.winRate) <= 55 ? 'text-[#FF3B3B]' : 'text-white'
+                                            parseInt(agent.winRate) <= 55 ? 'text-[#FF3B3B]' : 'text-white'
                                             }`}>
                                             {agent.winRate}
                                         </td>
@@ -123,6 +123,19 @@ const AnalyticsDashboard = () => {
                         </ul>
                     </div>
                 </section>
+
+                {/* Footer Navigation */}
+                <footer className="mt-12 text-center space-y-4">
+                    <div className="flex justify-center gap-6">
+                        <a href="/" className="text-primary hover:text-primary/80 transition-colors font-body tracking-wide">
+                            ← Back to Arena
+                        </a>
+                        <span className="text-text-light/30">|</span>
+                        <a href="/match/demo" className="text-primary hover:text-primary/80 transition-colors font-body tracking-wide">
+                            View Sample Match →
+                        </a>
+                    </div>
+                </footer>
             </div>
         </div>
     );
