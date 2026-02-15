@@ -3,7 +3,7 @@ import { aggressive } from '../agents/aggressive.js';
 import { conservative } from '../agents/conservative.js';
 import { monteCarlo } from '../agents/monteCarlo.js';
 import { gemini } from '../agents/gemini.js';
-import { openRouter } from '../agents/openRouter.js';
+import { openRouter, openRouterAggressive, openRouterConservative, openRouterAdaptive } from '../agents/openRouter.js';
 import { toHex } from 'viem';
 import { storeMatchResult } from './matchHistory.js';
 
@@ -16,7 +16,10 @@ const AGENTS = {
     'conservative': conservative,
     'monteCarlo': monteCarlo,
     'gemini': gemini,
-    'openRouter': openRouter
+    'openRouter': openRouter,
+    'openRouterAggressive': openRouterAggressive,
+    'openRouterConservative': openRouterConservative,
+    'openRouterAdaptive': openRouterAdaptive
 };
 
 // Helper to generate salt

@@ -45,15 +45,15 @@ const Homepage = () => {
         try {
             // Map frontend agent names to backend agent names
             const agentMap = {
-                'Aggressive': 'aggressive',
-                'Conservative': 'conservative',
-                'Adaptive': 'openRouter' // Using openRouter as adaptive for now
+                'Aggressive': 'openRouterAggressive',
+                'Conservative': 'openRouterConservative',
+                'Adaptive': 'openRouterAdaptive'
             };
 
             const response = await fetch('/api/match/start', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
+                body: JSON.stringify({
                     agentA: agentMap[agentA] || agentA.toLowerCase(),
                     agentB: agentMap[agentB] || agentB.toLowerCase()
                 }),

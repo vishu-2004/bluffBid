@@ -79,10 +79,10 @@ const MatchPage = () => {
         } else {
             // Fallback: Build round entry from cumulative state
             rounds = [...existingRounds];
-            
+
             const knownRounds = rounds.length;
             if (completedRounds > knownRounds || (completedRounds >= 5 && knownRounds < 5)) {
-                
+
                 // If status is Completed (2) and we don't have history, we might miss data.
                 // But let's try to interpolate as best as we can.
 
@@ -100,7 +100,7 @@ const MatchPage = () => {
                         const progress = (i + 1) / roundsToAdd;
                         const balA = isLastNew ? p1Balance : (prevBalA - (prevBalA - p1Balance) * progress);
                         const balB = isLastNew ? p2Balance : (prevBalB - (prevBalB - p2Balance) * progress);
-                        
+
                         // Estimate bids
                         const stepPrevBalA = i === 0 ? prevBalA : (prevBalA - (prevBalA - p1Balance) * (i / roundsToAdd));
                         const stepPrevBalB = i === 0 ? prevBalB : (prevBalB - (prevBalB - p2Balance) * (i / roundsToAdd));
@@ -110,11 +110,11 @@ const MatchPage = () => {
 
                         bidA = Math.round(bidA * 10) / 10;
                         bidB = Math.round(bidB * 10) / 10;
-                        
+
                         let winner = 'Tie';
                         if (bidA > bidB) winner = 'A';
                         else if (bidB > bidA) winner = 'B';
-                        
+
                         rounds.push({
                             round: roundNum,
                             bidA: bidA,
