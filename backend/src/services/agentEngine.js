@@ -120,9 +120,11 @@ export class GameEngine {
             roundHistory: roundHistoryB
         };
 
-        // 2. Decide Bids (await supports both sync and async agents)
-        const decisionA = await this.agentA.decide(gameStateA);
-        const decisionB = await this.agentB.decide(gameStateB);
+        // 2. Decide Bids in parallel (await supports both sync and async agents)
+        const [decisionA, decisionB] = await Promise.all([
+            this.agentA.decide(gameStateA),
+            this.agentB.decide(gameStateB)
+        ]);
 
         console.log(`Agent A [${decisionA.reason}] -> Bid: ${decisionA.bid}`);
         console.log(`Agent B [${decisionB.reason}] -> Bid: ${decisionB.bid}`);
