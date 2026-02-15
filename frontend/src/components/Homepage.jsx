@@ -39,6 +39,10 @@ const Homepage = () => {
             setError('Select both agents to initiate the duel.');
             return;
         }
+        if (agentA === agentB) {
+            setError('Agents must use different strategies — each strategy has its own wallet.');
+            return;
+        }
 
         setIsLoading(true);
         setError('');
@@ -253,10 +257,14 @@ const Homepage = () => {
                             <select
                                 className="dropdown-select mb-4"
                                 value={agentA}
-                                onChange={(e) => setAgentA(e.target.value)}
+                                onChange={(e) => {
+                                    const val = e.target.value;
+                                    setAgentA(val);
+                                    if (val && val === agentB) setAgentB('');
+                                }}
                             >
                                 <option value="">Select Agent A Strategy</option>
-                                {agentTypes.map((type) => (
+                                {agentTypes.filter(t => t.id !== agentB).map((type) => (
                                     <option key={type.id} value={type.id}>
                                         {type.icon} {type.label}
                                     </option>
@@ -278,10 +286,14 @@ const Homepage = () => {
                             <select
                                 className="dropdown-select mb-4"
                                 value={agentB}
-                                onChange={(e) => setAgentB(e.target.value)}
+                                onChange={(e) => {
+                                    const val = e.target.value;
+                                    setAgentB(val);
+                                    if (val && val === agentA) setAgentA('');
+                                }}
                             >
                                 <option value="">Select Agent B Strategy</option>
-                                {agentTypes.map((type) => (
+                                {agentTypes.filter(t => t.id !== agentA).map((type) => (
                                     <option key={type.id} value={type.id}>
                                         {type.icon} {type.label}
                                     </option>

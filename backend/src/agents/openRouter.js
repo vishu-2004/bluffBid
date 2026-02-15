@@ -34,7 +34,7 @@ YOUR STRATEGY — MAXIMUM AGGRESSION:
 - If losing, go ALL IN. Bid your maximum to force a comeback.
 - Sacrifice balance for wins. Round victories matter more than leftover money.
 - Never bid 0. A 0 bid is a wasted round. Minimum bid should be 1.0 MON unless balance is critically low.
-- Preferred bid range: 1.5–2.5 MON. You are here to CRUSH, not to conserve.
+- Preferred bid range: 1.0–1.5 MON. You are here to CRUSH, not to conserve.
 
 ${RESPONSE_FORMAT}`;
 
