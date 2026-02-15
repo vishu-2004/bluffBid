@@ -1,4 +1,4 @@
-import { createMatch, joinMatch, commitBid, revealBid, getMatchState, walletClientA, walletClientB, publicClient } from './contract.js';
+import { createMatch, joinMatch, commitBid, revealBid, getMatchState, walletClientA, walletClientB, publicClient, MAX_BID_SCALED } from './contract.js';
 import { aggressive } from '../agents/aggressive.js';
 import { conservative } from '../agents/conservative.js';
 import { monteCarlo } from '../agents/monteCarlo.js';
@@ -6,6 +6,10 @@ import { gemini } from '../agents/gemini.js';
 import { openRouter } from '../agents/openRouter.js';
 import { toHex } from 'viem';
 import { storeMatchResult } from './matchHistory.js';
+
+// Scaling constants
+const SCALE_FACTOR = 10; // Contract scales by 10
+const STARTING_BALANCE_SCALED = 40; // 4.0 MON in scaled units
 
 const AGENTS = {
     'aggressive': aggressive,
@@ -101,7 +105,24 @@ export class GameEngine {
         // 1. Get On-Chain State
         const state = await getMatchState(this.matchId);
 
-        // Build round history from each player's perspective
+        // Check if match is already completed
+        if (state.status === 2) { // MatchStatus.Completed = 2
+            console.log(`Match ${this.matchId} already completed, skipping round ${round}`);
+            return;
+        }
+
+        // Contract now stores balances directly in scaled units (40 = 4.0 MON)
+        // No conversion needed - balances are already in scaled units
+        const balance1Scaled = Number(state.player1.balance);
+        const balance2Scaled = Number(state.player2.balance);
+
+        // Edge case: If both balances are 0, stop the match
+        if (balance1Scaled === 0 && balance2Scaled === 0) {
+            console.log(`Match ${this.matchId}: Both balances exhausted, ending match early`);
+            return;
+        }
+
+        // Build round history from each player's perspective (bids are already in scaled units)
         const roundHistoryA = this.history.map(h => ({
             round: h.round,
             myBid: h.p1Bid,
@@ -116,11 +137,11 @@ export class GameEngine {
             result: h.p2Bid > h.p1Bid ? 'You won' : h.p2Bid < h.p1Bid ? 'You lost' : 'Tie'
         }));
 
-        // Transform to local state for agents
+        // Transform to local state for agents (all values in scaled units)
         const gameStateA = {
             roundNumber: Number(state.currentRound),
-            myBalance: Number(state.player1.balance),
-            opponentBalance: Number(state.player2.balance),
+            myBalance: balance1Scaled,
+            opponentBalance: balance2Scaled,
             myWins: Number(state.player1.wins),
             opponentWins: Number(state.player2.wins),
             opponentPreviousBids: this.history.map(h => h.p2Bid),
@@ -129,8 +150,8 @@ export class GameEngine {
 
         const gameStateB = {
             roundNumber: Number(state.currentRound),
-            myBalance: Number(state.player2.balance),
-            opponentBalance: Number(state.player1.balance),
+            myBalance: balance2Scaled,
+            opponentBalance: balance1Scaled,
             myWins: Number(state.player2.wins),
             opponentWins: Number(state.player1.wins),
             opponentPreviousBids: this.history.map(h => h.p1Bid),
@@ -143,41 +164,68 @@ export class GameEngine {
             this.agentB.decide(gameStateB)
         ]);
 
-        console.log(`Agent A [${decisionA.reason}] -> Bid: ${decisionA.bid}`);
-        console.log(`Agent B [${decisionB.reason}] -> Bid: ${decisionB.bid}`);
+        // Edge case validation: Ensure bids are valid
+        // Validate bid A
+        let bidA = Math.max(0, Math.min(MAX_BID_SCALED, decisionA.bid));
+        if (bidA > balance1Scaled) {
+            console.warn(`Agent A bid ${bidA} exceeds balance ${balance1Scaled}, clamping to balance`);
+            bidA = balance1Scaled;
+        }
+        if (bidA < 0) {
+            console.warn(`Agent A bid ${bidA} is negative, setting to 0`);
+            bidA = 0;
+        }
+
+        // Validate bid B
+        let bidB = Math.max(0, Math.min(MAX_BID_SCALED, decisionB.bid));
+        if (bidB > balance2Scaled) {
+            console.warn(`Agent B bid ${bidB} exceeds balance ${balance2Scaled}, clamping to balance`);
+            bidB = balance2Scaled;
+        }
+        if (bidB < 0) {
+            console.warn(`Agent B bid ${bidB} is negative, setting to 0`);
+            bidB = 0;
+        }
+
+        console.log(`Agent A [${decisionA.reason}] -> Bid: ${bidA} (${(bidA / 10).toFixed(1)} MON)`);
+        console.log(`Agent B [${decisionB.reason}] -> Bid: ${bidB} (${(bidB / 10).toFixed(1)} MON)`);
 
         // 3. Commit Phase
         const saltA = generateSalt();
         const saltB = generateSalt();
 
         console.log("Committing Bids...");
-        const c1 = await commitBid(walletClientA, this.matchId, decisionA.bid, saltA);
+        const c1 = await commitBid(walletClientA, this.matchId, bidA, saltA);
         await publicClient.waitForTransactionReceipt({ hash: c1 });
 
-        const c2 = await commitBid(walletClientB, this.matchId, decisionB.bid, saltB);
+        const c2 = await commitBid(walletClientB, this.matchId, bidB, saltB);
         await publicClient.waitForTransactionReceipt({ hash: c2 });
 
         console.log("Bids Committed. Revealing...");
 
-        const r1 = await revealBid(walletClientA, this.matchId, decisionA.bid, saltA);
+        const r1 = await revealBid(walletClientA, this.matchId, bidA, saltA);
         await publicClient.waitForTransactionReceipt({ hash: r1 });
 
-        const r2 = await revealBid(walletClientB, this.matchId, decisionB.bid, saltB);
+        const r2 = await revealBid(walletClientB, this.matchId, bidB, saltB);
         await publicClient.waitForTransactionReceipt({ hash: r2 });
 
         // 4. Record enriched history with round outcome and NEW BALANCE
         // Need to fetch state again to get updated balances
         const postRoundState = await getMatchState(this.matchId);
+        
+        // Balances are already in scaled units (no conversion needed)
+        const postBalance1Scaled = Number(postRoundState.player1.balance);
+        const postBalance2Scaled = Number(postRoundState.player2.balance);
 
         this.history.push({
             round,
-            p1Bid: decisionA.bid,
-            p2Bid: decisionB.bid,
-            balanceA: Number(postRoundState.player1.balance) / 1e18,
-            balanceB: Number(postRoundState.player2.balance) / 1e18,
-            winner: decisionA.bid > decisionB.bid ? 'A' : decisionA.bid < decisionB.bid ? 'B' : 'Tie'
+            p1Bid: bidA, // Store in scaled units
+            p2Bid: bidB, // Store in scaled units
+            balanceA: postBalance1Scaled, // Store in scaled units
+            balanceB: postBalance2Scaled, // Store in scaled units
+            winner: bidA > bidB ? 'A' : bidA < bidB ? 'B' : 'Tie'
         });
 
-        console.log(`Round Resolved: A bid ${decisionA.bid}, B bid ${decisionB.bid} → ${decisionA.bid > decisionB.bid ? 'A wins' : decisionA.bid < decisionB.bid ? 'B wins' : 'Tie'}`);
+        console.log(`Round Resolved: A bid ${bidA} (${(bidA / 10).toFixed(1)} MON), B bid ${bidB} (${(bidB / 10).toFixed(1)} MON) → ${bidA > bidB ? 'A wins' : bidA < bidB ? 'B wins' : 'Tie'}`);
     }
 }

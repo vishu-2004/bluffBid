@@ -208,12 +208,13 @@ const Homepage = () => {
 
                         <div className="space-y-4 text-base md:text-lg font-body">
                             {[
-                                { label: 'Deposit per Agent', value: '20 MON', color: 'text-success' },
-                                { label: 'Bid Range', value: '0–5 MON', color: 'text-text-light' },
+                                { label: 'Deposit per Agent', value: '4.0 MON', color: 'text-success' },
+                                { label: 'Bid Range', value: '0.0–2.5 MON', color: 'text-text-light' },
+                                { label: 'Bid Step', value: '0.1 MON', color: 'text-text-light' },
                                 { label: 'Rounds', value: 'Exactly 5', color: 'text-text-light' },
                                 { label: 'Round Winner', value: 'Highest bid secures it', color: 'text-text-light/80' },
                                 { label: 'Tie', value: 'No round secured', color: 'text-text-muted' },
-                                { label: 'Victory', value: 'Most rounds wins the 40 MON pot', color: 'text-success' },
+                                { label: 'Victory', value: 'Most rounds wins the 8.0 MON pot', color: 'text-success' },
                             ].map((rule, i) => (
                                 <div key={i} className="flex items-start group">
                                     <span className="text-primary mr-4 font-bold text-lg mt-0.5 group-hover:scale-125 transition-transform">▸</span>

@@ -103,26 +103,32 @@ export function getAnalytics() {
     });
 
     // Calculate final stats
+    // Bids are stored in scaled units (0-25), convert to MON (0.0-2.5) for display
+    const SCALE_FACTOR = 10;
     const agentStats = supportedAgents.map(agentName => {
         const stats = agentStatsMap[agentName];
-        const avgBid = stats.bidCount > 0 ? stats.totalBids / stats.bidCount : 0;
+        // Convert scaled bids to MON: divide by 10
+        const avgBidScaled = stats.bidCount > 0 ? stats.totalBids / stats.bidCount : 0;
+        const avgBidMON = avgBidScaled / SCALE_FACTOR;
 
         // Calculate aggression index (0-100)
-        // Based on average bid (0-5 scale) and bid volatility
+        // Based on average bid (0-2.5 MON scale) and bid volatility
         let aggression = 0;
         if (stats.bidValues.length > 0) {
-            const avg = avgBid;
-            const variance = stats.bidValues.reduce((sum, bid) => sum + Math.pow(bid - avg, 2), 0) / stats.bidValues.length;
+            // Convert all bids to MON for calculation
+            const bidsMON = stats.bidValues.map(b => b / SCALE_FACTOR);
+            const avg = avgBidMON;
+            const variance = bidsMON.reduce((sum, bid) => sum + Math.pow(bid - avg, 2), 0) / bidsMON.length;
             const stdDev = Math.sqrt(variance);
-            // Normalize: avg bid contributes 0-83%, volatility contributes 0-17%
-            aggression = Math.min(100, Math.round((avg / 5) * 83 + Math.min(stdDev / 2, 1) * 17));
+            // Normalize: avg bid (0-2.5) contributes 0-83%, volatility contributes 0-17%
+            aggression = Math.min(100, Math.round((avg / 2.5) * 83 + Math.min(stdDev / 0.5, 1) * 17));
         }
 
         return {
             name: agentName,
             matches: stats.matches,
             wins: stats.wins,
-            avgBid: parseFloat(avgBid.toFixed(1)),
+            avgBid: parseFloat(avgBidMON.toFixed(1)), // Return in MON
             aggression: aggression
         };
     }).filter(stat => stat.matches > 0); // Only return agents with matches

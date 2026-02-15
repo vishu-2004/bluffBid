@@ -1,20 +1,23 @@
 // Monte Carlo Simulation Agent
+// Scaled bid constants: 0-25 (represents 0.0-2.5 MON with 0.1 step)
+const MAX_BID_SCALED = 25; // 2.5 MON
 
 export const monteCarlo = {
     decide: (state) => {
         const { roundNumber, myBalance, opponentBalance, myWins, opponentWins, opponentPreviousBids } = state;
-        const possibleBids = [0, 1, 2, 3, 4, 5];
+        // Generate possible bids: 0, 1, 2, ..., 25 (scaled units)
+        const possibleBids = Array.from({ length: 26 }, (_, i) => i);
         let bestBid = 0;
         let maxUtility = -Infinity;
         const SIMULATIONS = 100;
 
         // Opponent modeling based on previous bids frequency
-        // Default to uniform if no history
-        let opponentBidProfile = [1, 1, 1, 1, 1, 1];
+        // Default to uniform if no history (0-25 range)
+        let opponentBidProfile = Array(26).fill(1);
         if (opponentPreviousBids && opponentPreviousBids.length > 0) {
             // Count frequencies
             opponentPreviousBids.forEach(b => {
-                if (b >= 0 && b <= 5) opponentBidProfile[b] += 1; // Add weight
+                if (b >= 0 && b <= MAX_BID_SCALED) opponentBidProfile[b] += 1; // Add weight
             });
         }
 
@@ -26,11 +29,11 @@ export const monteCarlo = {
         const sampleOpponentBid = () => {
             const r = Math.random();
             let accumulated = 0;
-            for (let i = 0; i < 6; i++) {
+            for (let i = 0; i <= MAX_BID_SCALED; i++) {
                 accumulated += opponentProbabilities[i];
                 if (r <= accumulated) return Math.min(i, opponentBalance);
             }
-            return Math.min(5, opponentBalance);
+            return Math.min(MAX_BID_SCALED, opponentBalance);
         };
 
         // Evaluate each possible move I can make

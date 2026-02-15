@@ -9,32 +9,37 @@ const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 const SYSTEM_PROMPT = `You are an expert strategic AI agent playing BluffBid, an on-chain bluffing and bidding game.
 
 RULES:
-- A match has 5 rounds. Each player starts with a balance of 20.
-- Each round, both players secretly choose a bid between 0 and 5 (inclusive).
+- A match has 5 rounds. Each player starts with a balance of 4.0 MON.
+- Each round, both players secretly choose a bid between 0.0 and 2.5 MON (inclusive).
+- Bid step size is 0.1 MON (valid bids: 0.0, 0.1, 0.2, ..., 2.5).
 - Both players always LOSE the amount they bid from their balance, regardless of who wins.
 - The player with the HIGHER bid wins the round. Ties mean no one wins.
 - The player who wins 3 or more rounds wins the match. If tied in wins, higher remaining balance wins.
 - You CANNOT bid more than your current balance.
 
 STRATEGY TIPS:
-- Winning costs resources. Sometimes bidding 0 to conserve is smart.
+- Winning costs resources. Sometimes bidding 0.0 to conserve is smart.
 - Track opponent patterns — if they always bid high, you can outbid or let them drain.
 - Late-round balance advantage can be decisive in tiebreakers.
 - Don't overspend early if you can't sustain it later.
 
 You MUST respond with ONLY a valid JSON object (no markdown, no code fences):
-{ "bid": <number 0-5>, "reason": "<short strategic explanation>" }`;
+{ "bid": <number 0.0-2.5>, "reason": "<short strategic explanation>" }`;
 
 /**
  * Build a human-readable summary of game state for Gemini
  */
 function buildPrompt(state) {
     const { roundNumber, myBalance, opponentBalance, myWins, opponentWins, roundHistory } = state;
+    
+    // Convert scaled values to display format (divide by 10)
+    const myBalanceDisplay = (myBalance / 10).toFixed(1);
+    const opponentBalanceDisplay = (opponentBalance / 10).toFixed(1);
 
     let prompt = `CURRENT GAME STATE:
 - Round: ${roundNumber} of 5
-- Your Balance: ${myBalance}
-- Opponent Balance: ${opponentBalance}
+- Your Balance: ${myBalanceDisplay} MON
+- Opponent Balance: ${opponentBalanceDisplay} MON
 - Your Wins: ${myWins}
 - Opponent Wins: ${opponentWins}
 - Rounds needed to win: ${3 - myWins} more`;
@@ -42,11 +47,14 @@ function buildPrompt(state) {
     if (roundHistory && roundHistory.length > 0) {
         prompt += `\n\nPREVIOUS ROUNDS:`;
         for (const r of roundHistory) {
-            prompt += `\n  Round ${r.round}: You bid ${r.myBid}, Opponent bid ${r.opponentBid} → ${r.result}`;
+            // Convert scaled bids to display format
+            const myBidDisplay = (r.myBid / 10).toFixed(1);
+            const oppBidDisplay = (r.opponentBid / 10).toFixed(1);
+            prompt += `\n  Round ${r.round}: You bid ${myBidDisplay} MON, Opponent bid ${oppBidDisplay} MON → ${r.result}`;
         }
     }
 
-    prompt += `\n\nWhat is your bid for Round ${roundNumber}? Remember: 0 ≤ bid ≤ min(5, ${myBalance}).`;
+    prompt += `\n\nWhat is your bid for Round ${roundNumber}? Remember: 0.0 ≤ bid ≤ min(2.5, ${myBalanceDisplay}) MON, step size 0.1 MON.`;
 
     return prompt;
 }
@@ -56,6 +64,7 @@ function buildPrompt(state) {
  */
 function fallbackDecide(state) {
     const { myBalance, myWins, opponentWins, roundNumber } = state;
+    const MAX_BID_SCALED = 25; // 2.5 MON
     let bid;
 
     if (myWins >= 3) {
@@ -63,10 +72,13 @@ function fallbackDecide(state) {
     } else if (opponentWins >= 3) {
         bid = 0; // Already lost, conserve
     } else if (roundNumber >= 4 && myWins < opponentWins) {
-        bid = Math.min(4, myBalance); // Desperate push
+        bid = Math.min(20, myBalance); // 2.0 MON scaled - Desperate push
     } else {
-        bid = Math.min(2, myBalance); // Moderate default
+        bid = Math.min(10, myBalance); // 1.0 MON scaled - Moderate default
     }
+
+    // Ensure bid is valid (0-25, step of 1, <= balance)
+    bid = Math.max(0, Math.min(MAX_BID_SCALED, Math.min(bid, myBalance)));
 
     return { bid, reason: '[Fallback] Gemini API unavailable, using heuristic' };
 }
@@ -90,10 +102,14 @@ export const gemini = {
             }
 
             const parsed = JSON.parse(jsonMatch[0]);
-            const bid = Math.max(0, Math.min(5, Math.min(parsed.bid, state.myBalance)));
+            // Convert user's decimal bid (0.0-2.5) to scaled integer (0-25)
+            const bidDecimal = Math.max(0, Math.min(2.5, parsed.bid || 0));
+            const bidScaled = Math.round(bidDecimal * 10); // Convert to scaled units
+            // Ensure bid is valid (0-25, <= balance)
+            const bid = Math.max(0, Math.min(25, Math.min(bidScaled, state.myBalance)));
 
             return {
-                bid: Math.floor(bid),
+                bid: bid,
                 reason: parsed.reason || 'Gemini strategic decision'
             };
         } catch (error) {

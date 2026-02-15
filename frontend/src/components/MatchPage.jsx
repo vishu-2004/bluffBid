@@ -1,19 +1,29 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 
+// Configuration constants
+const STARTING_BALANCE_MON = 4.0;
+const TOTAL_POT_MON = 8.0;
+const SCALE_FACTOR = 10; // Contract scales by 10
+
+// Helper to convert wei to scaled units, then to MON
+const weiToScaled = (wei) => Math.floor(Number(wei) / 1e17); // 4.0 ether = 4e18 wei, scaled = 40
+const scaledToMON = (scaled) => scaled / SCALE_FACTOR; // 40 -> 4.0
+const weiToMON = (wei) => scaledToMON(weiToScaled(wei));
+
 // Fallback mock data (used only when backend is unreachable)
 const generateMockMatchData = (id, agentAType, agentBType) => {
     return {
         id,
-        totalPot: 40,
-        agentA: { type: agentAType || 'Adaptive', startBalance: 20 },
-        agentB: { type: agentBType || 'Aggressive', startBalance: 20 },
+        totalPot: TOTAL_POT_MON,
+        agentA: { type: agentAType || 'Adaptive', startBalance: STARTING_BALANCE_MON },
+        agentB: { type: agentBType || 'Aggressive', startBalance: STARTING_BALANCE_MON },
         rounds: [
-            { round: 1, bidA: 3, bidB: 4, winner: 'B', balanceA: 17, balanceB: 16 },
-            { round: 2, bidA: 2, bidB: 2, winner: 'Tie', balanceA: 15, balanceB: 14 },
-            { round: 3, bidA: 4, bidB: 3, winner: 'A', balanceA: 11, balanceB: 11 },
-            { round: 4, bidA: 3, bidB: 4, winner: 'B', balanceA: 8, balanceB: 7 },
-            { round: 5, bidA: 4, bidB: 5, winner: 'B', balanceA: 4, balanceB: 2 },
+            { round: 1, bidA: 1.5, bidB: 2.0, winner: 'B', balanceA: 2.5, balanceB: 2.0 },
+            { round: 2, bidA: 1.0, bidB: 1.0, winner: 'Tie', balanceA: 1.5, balanceB: 1.0 },
+            { round: 3, bidA: 2.0, bidB: 1.5, winner: 'A', balanceA: 0.0, balanceB: 0.0 },
+            { round: 4, bidA: 0.0, bidB: 0.0, winner: 'Tie', balanceA: 0.0, balanceB: 0.0 },
+            { round: 5, bidA: 0.0, bidB: 0.0, winner: 'Tie', balanceA: 0.0, balanceB: 0.0 },
         ],
     };
 };
@@ -38,9 +48,12 @@ const MatchPage = () => {
     // Transform on-chain state into the matchData shape the UI expects
     const transformApiState = (state, existingRounds = []) => {
         const currentRound = Number(state.currentRound);
-        // Balance in Wei -> Ether (divide by 1e18)
-        const p1Balance = Number(state.player1.balance ?? state.player1[0]) / 1e18;
-        const p2Balance = Number(state.player2.balance ?? state.player2[0]) / 1e18;
+        // Contract now stores balances directly in scaled units (40 = 4.0 MON)
+        // Convert scaled units to MON
+        const p1BalanceScaled = Number(state.player1.balance ?? state.player1[0]);
+        const p2BalanceScaled = Number(state.player2.balance ?? state.player2[0]);
+        const p1Balance = scaledToMON(p1BalanceScaled);
+        const p2Balance = scaledToMON(p2BalanceScaled);
         const p1Wins = Number(state.player1.wins ?? state.player1[1]);
         const p2Wins = Number(state.player2.wins ?? state.player2[1]);
         const status = Number(state.status);
@@ -55,11 +68,13 @@ const MatchPage = () => {
         if (state.history && Array.isArray(state.history)) {
             rounds = state.history.map(h => ({
                 round: h.round,
-                bidA: Number(h.p1Bid),
-                bidB: Number(h.p2Bid),
+                // Bids are in scaled units (0-25), convert to MON (0.0-2.5)
+                bidA: scaledToMON(Number(h.p1Bid)),
+                bidB: scaledToMON(Number(h.p2Bid)),
                 winner: h.winner,
-                balanceA: Number(h.balanceA),
-                balanceB: Number(h.balanceB)
+                // Balances are in scaled units, convert to MON
+                balanceA: scaledToMON(Number(h.balanceA)),
+                balanceB: scaledToMON(Number(h.balanceB))
             }));
         } else {
             // Fallback: Build round entry from cumulative state
@@ -72,8 +87,8 @@ const MatchPage = () => {
                 // But let's try to interpolate as best as we can.
 
                 const totalCompleted = Math.min(completedRounds, 5);
-                const prevBalA = knownRounds > 0 ? rounds[knownRounds - 1].balanceA : 20;
-                const prevBalB = knownRounds > 0 ? rounds[knownRounds - 1].balanceB : 20;
+                const prevBalA = knownRounds > 0 ? rounds[knownRounds - 1].balanceA : STARTING_BALANCE_MON;
+                const prevBalB = knownRounds > 0 ? rounds[knownRounds - 1].balanceB : STARTING_BALANCE_MON;
 
                 const roundsToAdd = totalCompleted - knownRounds;
                 if (roundsToAdd > 0) {
@@ -115,9 +130,9 @@ const MatchPage = () => {
 
         return {
             id: state.id?.toString() || id,
-            totalPot: 40,
-            agentA: { type: agentAType || 'Unknown', startBalance: 20 },
-            agentB: { type: agentBType || 'Unknown', startBalance: 20 },
+            totalPot: TOTAL_POT_MON,
+            agentA: { type: agentAType || 'Unknown', startBalance: STARTING_BALANCE_MON },
+            agentB: { type: agentBType || 'Unknown', startBalance: STARTING_BALANCE_MON },
             rounds,
             _completedRounds: completedRounds,
             _status: Number(state.status),
@@ -219,11 +234,11 @@ const MatchPage = () => {
     }, [matchData, usingMockData]);
 
     const getProgressiveStats = () => {
-        if (!matchData) return { winsA: 0, winsB: 0, balanceA: 20, balanceB: 20, currentRound: 0 };
+        if (!matchData) return { winsA: 0, winsB: 0, balanceA: STARTING_BALANCE_MON, balanceB: STARTING_BALANCE_MON, currentRound: 0 };
         const revealedRounds = matchData.rounds.slice(0, visibleRounds);
         let winsA = 0, winsB = 0;
-        let balanceA = matchData.agentA.startBalance || 20;
-        let balanceB = matchData.agentB.startBalance || 20;
+        let balanceA = matchData.agentA.startBalance || STARTING_BALANCE_MON;
+        let balanceB = matchData.agentB.startBalance || STARTING_BALANCE_MON;
         if (revealedRounds.length > 0) {
             const lastRound = revealedRounds[revealedRounds.length - 1];
             balanceA = lastRound.balanceA;
@@ -349,7 +364,10 @@ const MatchPage = () => {
                             <div className="bg-bg-dark/50 p-4 border border-primary/10">
                                 <div className="text-xs text-text-muted font-subheading mb-1 uppercase tracking-wider">Balance</div>
                                 <div className="text-2xl font-heading text-success" style={{ textShadow: '0 0 10px rgba(0, 245, 160, 0.3)' }}>
-                                    {stats.balanceA} <span className="text-sm text-text-muted">MON</span>
+                                    {stats.balanceA.toFixed(1)} <span className="text-sm text-text-muted">MON</span>
+                                    {stats.balanceA === 0 && (
+                                        <div className="text-xs text-danger mt-1">Balance Exhausted</div>
+                                    )}
                                 </div>
                             </div>
                             <div className="bg-bg-dark/50 p-4 border border-primary/10">
@@ -397,7 +415,10 @@ const MatchPage = () => {
                             <div className="bg-bg-dark/50 p-4 border border-danger/10">
                                 <div className="text-xs text-text-muted font-subheading mb-1 uppercase tracking-wider">Balance</div>
                                 <div className="text-2xl font-heading text-success" style={{ textShadow: '0 0 10px rgba(0, 245, 160, 0.3)' }}>
-                                    {stats.balanceB} <span className="text-sm text-text-muted">MON</span>
+                                    {stats.balanceB.toFixed(1)} <span className="text-sm text-text-muted">MON</span>
+                                    {stats.balanceB === 0 && (
+                                        <div className="text-xs text-danger mt-1">Balance Exhausted</div>
+                                    )}
                                 </div>
                             </div>
                             <div className="bg-bg-dark/50 p-4 border border-danger/10">
@@ -443,13 +464,13 @@ const MatchPage = () => {
                                         <td className="p-3">
                                             <span className="font-heading text-primary"
                                                 style={{ textShadow: round.winner === 'A' ? '0 0 10px rgba(124, 58, 237, 0.5)' : 'none' }}>
-                                                {round.bidA} <span className="text-xs text-text-muted">MON</span>
+                                                {round.bidA.toFixed(1)} <span className="text-xs text-text-muted">MON</span>
                                             </span>
                                         </td>
                                         <td className="p-3">
                                             <span className="font-heading text-danger"
                                                 style={{ textShadow: round.winner === 'B' ? '0 0 10px rgba(255, 59, 59, 0.5)' : 'none' }}>
-                                                {round.bidB} <span className="text-xs text-text-muted">MON</span>
+                                                {round.bidB.toFixed(1)} <span className="text-xs text-text-muted">MON</span>
                                             </span>
                                         </td>
                                         <td className="p-3 font-heading">
@@ -461,8 +482,8 @@ const MatchPage = () => {
                                                 <span className="px-3 py-1 text-xs bg-text-muted/10 text-text-muted border border-text-muted/20">TIE</span>
                                             )}
                                         </td>
-                                        <td className="p-3 font-body text-success text-sm">{round.balanceA} MON</td>
-                                        <td className="p-3 font-body text-success text-sm">{round.balanceB} MON</td>
+                                        <td className="p-3 font-body text-success text-sm">{round.balanceA.toFixed(1)} MON</td>
+                                        <td className="p-3 font-body text-success text-sm">{round.balanceB.toFixed(1)} MON</td>
                                     </tr>
                                 ))}
 
@@ -568,7 +589,7 @@ const MatchPage = () => {
                                     DRAW
                                 </h2>
                                 <p className="text-base font-subheading text-text-muted mb-2">
-                                    Pot split equally. Neither agent dominated.
+                                    Pot split equally ({matchData.totalPot > 0 ? (matchData.totalPot / 2).toFixed(1) : '0.0'} MON each). Neither agent dominated.
                                 </p>
                             </>
                         ) : (
@@ -580,7 +601,7 @@ const MatchPage = () => {
                                     {result.type} Agent
                                 </p>
                                 <p className="text-sm font-subheading text-text-muted mb-2">
-                                    Secures the {matchData.totalPot} MON pot. Round secured. Bankroll intact.
+                                    Secures the {matchData.totalPot.toFixed(1)} MON pot. Round secured. Bankroll intact.
                                 </p>
                             </>
                         )}
