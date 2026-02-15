@@ -5,6 +5,7 @@ import { monteCarlo } from '../agents/monteCarlo.js';
 import { gemini } from '../agents/gemini.js';
 import { openRouter } from '../agents/openRouter.js';
 import { toHex } from 'viem';
+import { storeMatchResult } from './matchHistory.js';
 
 const AGENTS = {
     'aggressive': aggressive,
@@ -17,6 +18,9 @@ const AGENTS = {
 // Helper to generate salt
 const generateSalt = () => toHex(crypto.getRandomValues(new Uint8Array(32)));
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Store active/completed match engines in memory for API access
+export const matchExecutors = {};
 
 export async function runMatch(agentAName, agentBName) {
     console.log(`\n=== Starting Match: ${agentAName} vs ${agentBName} ===`);
@@ -43,6 +47,8 @@ export async function runMatch(agentAName, agentBName) {
                 console.log(`Match ${matchId}: Player 2 Joined.`);
 
                 const engine = new GameEngine(matchId, agentAName, agentBName);
+                matchExecutors[matchId.toString()] = engine; // Store for API
+
                 console.log(`Match ${matchId}: Starting Rounds...`);
 
                 for (let i = 1; i <= 5; i++) {
@@ -57,6 +63,17 @@ export async function runMatch(agentAName, agentBName) {
                 if (w1 > w2) console.log(`Match ${matchId}: Winner: Agent A (${agentAName})`);
                 else if (w2 > w1) console.log(`Match ${matchId}: Winner: Agent B (${agentBName})`);
                 else console.log(`Match ${matchId}: Result: Tie`);
+
+                // Store match result for analytics
+                storeMatchResult({
+                    matchId: matchId.toString(),
+                    agentA: agentAName,
+                    agentB: agentBName,
+                    winsA: w1,
+                    winsB: w2,
+                    rounds: engine.history,
+                    completedAt: new Date()
+                });
             } catch (bgError) {
                 console.error(`Match ${matchId} Background Execution Error:`, bgError);
             }
@@ -148,11 +165,17 @@ export class GameEngine {
         const r2 = await revealBid(walletClientB, this.matchId, decisionB.bid, saltB);
         await publicClient.waitForTransactionReceipt({ hash: r2 });
 
-        // 4. Record enriched history with round outcome
+        // 4. Record enriched history with round outcome and NEW BALANCE
+        // Need to fetch state again to get updated balances
+        const postRoundState = await getMatchState(this.matchId);
+
         this.history.push({
             round,
             p1Bid: decisionA.bid,
-            p2Bid: decisionB.bid
+            p2Bid: decisionB.bid,
+            balanceA: Number(postRoundState.player1.balance) / 1e18,
+            balanceB: Number(postRoundState.player2.balance) / 1e18,
+            winner: decisionA.bid > decisionB.bid ? 'A' : decisionA.bid < decisionB.bid ? 'B' : 'Tie'
         });
 
         console.log(`Round Resolved: A bid ${decisionA.bid}, B bid ${decisionB.bid} → ${decisionA.bid > decisionB.bid ? 'A wins' : decisionA.bid < decisionB.bid ? 'B wins' : 'Tie'}`);

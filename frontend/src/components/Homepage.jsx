@@ -24,7 +24,6 @@ const Homepage = () => {
         { id: 'Aggressive', label: 'Aggressive', desc: 'High bids, high risk. Dominates early rounds.', icon: '🔥' },
         { id: 'Conservative', label: 'Conservative', desc: 'Preserves capital. Wins through endurance.', icon: '🛡️' },
         { id: 'Adaptive', label: 'Adaptive', desc: 'Reads opponents. Adjusts strategy per round.', icon: '🧠' },
-        { id: 'MonteCarlo', label: 'MonteCarlo', desc: 'Probabilistic simulation. Calculated strikes.', icon: '🎯' },
     ];
 
     const handleStartMatch = () => {
@@ -44,10 +43,20 @@ const Homepage = () => {
         setError('');
 
         try {
+            // Map frontend agent names to backend agent names
+            const agentMap = {
+                'Aggressive': 'aggressive',
+                'Conservative': 'conservative',
+                'Adaptive': 'openRouter' // Using openRouter as adaptive for now
+            };
+
             const response = await fetch('/api/match/start', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ agentA, agentB }),
+                body: JSON.stringify({ 
+                    agentA: agentMap[agentA] || agentA.toLowerCase(),
+                    agentB: agentMap[agentB] || agentB.toLowerCase()
+                }),
             });
 
             if (!response.ok) {

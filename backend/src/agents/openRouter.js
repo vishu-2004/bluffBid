@@ -71,7 +71,7 @@ export const openRouter = {
         try {
             const stream = await openrouter.chat.send({
                 chatGenerationParams: {
-                    model: 'stepfun/step-3.5-flash:free',
+                    model: 'google/gemma-3-27b-it',
                     messages: [
                         { role: 'system', content: SYSTEM_PROMPT },
                         { role: 'user', content: buildPrompt(state) }

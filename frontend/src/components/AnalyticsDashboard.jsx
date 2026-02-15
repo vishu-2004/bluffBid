@@ -1,19 +1,40 @@
 import { Link } from 'react-router-dom';
+import { useState, useEffect } from 'react';
 
-// Mock data
-const agentStats = [
-    { name: 'Aggressive', matches: 42, wins: 28, winRate: 66, avgBid: 3.8, aggression: 89, icon: '🔥' },
-    { name: 'Conservative', matches: 35, wins: 18, winRate: 51, avgBid: 1.6, aggression: 32, icon: '🛡️' },
-    { name: 'Adaptive', matches: 31, wins: 20, winRate: 64, avgBid: 2.9, aggression: 58, icon: '🧠' },
-    { name: 'MonteCarlo', matches: 20, wins: 14, winRate: 70, avgBid: 3.1, aggression: 65, icon: '🎯' },
-];
+// Agent configuration
+const agentConfig = {
+    'Aggressive': { icon: '🔥' },
+    'Conservative': { icon: '🛡️' },
+    'Adaptive': { icon: '🧠' },
+};
 
-const overallStats = [
-    { label: 'Total Matches', value: '128', icon: '⚔️' },
-    { label: 'Overall Win Rate', value: '61%', icon: '📊', type: 'success' },
-    { label: 'Avg Bid Value', value: '2.7 MON', icon: '💰' },
-    { label: 'Aggression Index', value: '74', subtext: 'Calculated from bid size & volatility', icon: '🎯' },
-];
+// Helper to calculate overall stats from agent stats
+const calculateOverallStats = (agentStats, totalMatchesFromAPI) => {
+    // Use the actual total matches from API (not sum of agent matches, which would double-count)
+    const totalMatches = totalMatchesFromAPI || 0;
+    
+    // Calculate overall win rate: average win rate across all agents
+    // This gives a sense of how often agents win on average
+    const totalWins = agentStats.reduce((sum, a) => sum + a.wins, 0);
+    const totalAgentMatches = agentStats.reduce((sum, a) => sum + a.matches, 0);
+    const overallWinRate = totalAgentMatches > 0 ? Math.round((totalWins / totalAgentMatches) * 100) : 0;
+    
+    // Calculate average bid: weighted average across all agent matches
+    const totalParticipantMatches = agentStats.reduce((sum, a) => sum + a.matches, 0);
+    const totalBids = agentStats.reduce((sum, a) => sum + (a.avgBid * a.matches), 0);
+    const avgBid = totalParticipantMatches > 0 ? (totalBids / totalParticipantMatches).toFixed(1) : '0.0';
+    
+    const avgAggression = agentStats.length > 0 
+        ? Math.round(agentStats.reduce((sum, a) => sum + a.aggression, 0) / agentStats.length)
+        : 0;
+
+    return [
+        { label: 'Total Matches', value: totalMatches.toString(), icon: '⚔️' },
+        { label: 'Overall Win Rate', value: `${overallWinRate}%`, icon: '📊', type: 'success' },
+        { label: 'Avg Bid Value', value: `${avgBid} MON`, icon: '💰' },
+        { label: 'Aggression Index', value: avgAggression.toString(), subtext: 'Calculated from bid size & volatility', icon: '🎯' },
+    ];
+};
 
 const StatCard = ({ label, value, subtext, type = 'neutral', icon }) => (
     <div className="stat-card group">
@@ -85,11 +106,77 @@ const AggressionBar = ({ value }) => {
 };
 
 const AnalyticsDashboard = () => {
+    const [agentStats, setAgentStats] = useState([]);
+    const [overallStats, setOverallStats] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState(null);
+
+    useEffect(() => {
+        const fetchAnalytics = async () => {
+            try {
+                setIsLoading(true);
+                const response = await fetch('/api/analytics');
+                if (!response.ok) {
+                    throw new Error('Failed to fetch analytics');
+                }
+                const data = await response.json();
+                
+                // Transform backend data to frontend format
+                const transformedStats = data.agentStats.map(stat => ({
+                    name: stat.name,
+                    matches: stat.matches,
+                    wins: stat.wins,
+                    winRate: stat.matches > 0 ? Math.round((stat.wins / stat.matches) * 100) : 0,
+                    avgBid: stat.avgBid,
+                    aggression: stat.aggression,
+                    icon: agentConfig[stat.name]?.icon || '🤖'
+                }));
+
+                setAgentStats(transformedStats);
+                setOverallStats(calculateOverallStats(transformedStats, data.totalMatches));
+            } catch (err) {
+                console.error('Error fetching analytics:', err);
+                setError(err.message);
+                // Fallback to empty data
+                setAgentStats([]);
+                setOverallStats(calculateOverallStats([], 0));
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        fetchAnalytics();
+    }, []);
+
     const winRateColor = (v) => {
         if (v >= 65) return '#00F5A0';
         if (v >= 55) return '#7C3AED';
         return '#FF3B3B';
     };
+
+    if (isLoading) {
+        return (
+            <div className="min-h-screen text-text-light font-body bg-grid-pattern flex items-center justify-center">
+                <div className="text-center">
+                    <div className="w-16 h-16 border-4 border-primary/30 border-t-primary rounded-full animate-spin mx-auto mb-6" />
+                    <div className="text-xl font-heading text-primary tracking-wider">
+                        LOADING ANALYTICS...
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    if (error && agentStats.length === 0) {
+        return (
+            <div className="min-h-screen text-text-light font-body bg-grid-pattern flex items-center justify-center">
+                <div className="text-center">
+                    <div className="text-danger text-xl font-heading mb-4">Error Loading Analytics</div>
+                    <div className="text-text-muted">{error}</div>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen text-text-light font-body bg-grid-pattern">
@@ -135,10 +222,16 @@ const AnalyticsDashboard = () => {
                         <h3 className="text-sm font-heading font-bold mb-6 text-text-muted tracking-wider flex items-center gap-2">
                             <span className="text-primary">▸</span> WIN RATE COMPARISON
                         </h3>
-                        <BarChart
-                            data={agentStats.map((a) => ({ label: a.name, value: a.winRate }))}
-                            colorFn={winRateColor}
-                        />
+                        {agentStats.length > 0 ? (
+                            <BarChart
+                                data={agentStats.map((a) => ({ label: a.name, value: a.winRate }))}
+                                colorFn={winRateColor}
+                            />
+                        ) : (
+                            <div className="text-center py-8 text-text-muted">
+                                No match data available yet. Play some matches to see statistics.
+                            </div>
+                        )}
                     </div>
 
                     <div className="glass-card-glow p-6">
@@ -146,16 +239,22 @@ const AnalyticsDashboard = () => {
                             <span className="text-primary">▸</span> AGGRESSION INDEX
                         </h3>
                         <div className="space-y-5">
-                            {agentStats.map((agent, i) => (
-                                <div key={i}>
-                                    <div className="flex items-center justify-between mb-2">
-                                        <span className="text-sm font-subheading text-text-light flex items-center gap-2">
-                                            <span>{agent.icon}</span> {agent.name}
-                                        </span>
+                            {agentStats.length > 0 ? (
+                                agentStats.map((agent, i) => (
+                                    <div key={i}>
+                                        <div className="flex items-center justify-between mb-2">
+                                            <span className="text-sm font-subheading text-text-light flex items-center gap-2">
+                                                <span>{agent.icon}</span> {agent.name}
+                                            </span>
+                                        </div>
+                                        <AggressionBar value={agent.aggression} />
                                     </div>
-                                    <AggressionBar value={agent.aggression} />
+                                ))
+                            ) : (
+                                <div className="text-center py-8 text-text-muted">
+                                    No match data available yet.
                                 </div>
-                            ))}
+                            )}
                         </div>
                     </div>
                 </section>
@@ -179,7 +278,8 @@ const AnalyticsDashboard = () => {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {agentStats.map((agent, index) => (
+                                    {agentStats.length > 0 ? (
+                                        agentStats.map((agent, index) => (
                                         <tr key={index} className="border-b border-primary/5 hover:bg-card-bg-lighter/30 transition-all duration-300 group">
                                             <td className="p-4">
                                                 <span className="flex items-center gap-2 font-medium text-white">
@@ -201,7 +301,14 @@ const AnalyticsDashboard = () => {
                                                 <AggressionBar value={agent.aggression} />
                                             </td>
                                         </tr>
-                                    ))}
+                                        ))
+                                    ) : (
+                                        <tr>
+                                            <td colSpan="6" className="p-8 text-center text-text-muted">
+                                                No match data available yet. Play some matches to see statistics.
+                                            </td>
+                                        </tr>
+                                    )}
                                 </tbody>
                             </table>
                         </div>
@@ -223,7 +330,6 @@ const AnalyticsDashboard = () => {
                                     'Aggressive agents show higher volatility but increased round dominance.',
                                     'Conservative agents preserve capital but struggle under sustained pressure.',
                                     'Adaptive strategies maintain balanced win consistency across matchups.',
-                                    'MonteCarlo agents excel in longer strategic sessions with probabilistic advantage.',
                                 ].map((observation, i) => (
                                     <li key={i} className="flex items-start group">
                                         <span className="w-2 h-2 bg-primary rounded-full mt-2 mr-3 flex-shrink-0 group-hover:shadow-glow-primary transition-shadow" />

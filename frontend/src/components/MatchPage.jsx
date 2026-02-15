@@ -38,65 +38,77 @@ const MatchPage = () => {
     // Transform on-chain state into the matchData shape the UI expects
     const transformApiState = (state, existingRounds = []) => {
         const currentRound = Number(state.currentRound);
-        const p1Balance = Number(state.player1.balance ?? state.player1[0]);
-        const p2Balance = Number(state.player2.balance ?? state.player2[0]);
+        // Balance in Wei -> Ether (divide by 1e18)
+        const p1Balance = Number(state.player1.balance ?? state.player1[0]) / 1e18;
+        const p2Balance = Number(state.player2.balance ?? state.player2[0]) / 1e18;
         const p1Wins = Number(state.player1.wins ?? state.player1[1]);
         const p2Wins = Number(state.player2.wins ?? state.player2[1]);
+        const status = Number(state.status);
 
-        // Build round entry from cumulative state if we have a new round
-        const rounds = [...existingRounds];
-        const completedRounds = currentRound > 0 ? currentRound - 1 : 0;
-        // The contract increments currentRound after each reveal, so completed = currentRound - 1
-        // But if match is done (all 5 rounds), currentRound might be 5 or 6
+        let rounds = [];
+        let completedRounds = currentRound > 0 ? currentRound - 1 : 0;
+        if (status === 2) {
+            completedRounds = 5;
+        }
 
-        // We synthesize a snapshot of the latest state as a round entry
-        const knownRounds = rounds.length;
-        if (completedRounds > knownRounds || (completedRounds >= 5 && knownRounds < 5)) {
-            const totalCompleted = Math.min(completedRounds, 5);
-            // We don't have per-round bids from the on-chain getter, so we record the
-            // cumulative state. The UI cares about winner and balances.
-            const prevBalA = knownRounds > 0 ? rounds[knownRounds - 1].balanceA : 20;
-            const prevBalB = knownRounds > 0 ? rounds[knownRounds - 1].balanceB : 20;
+        // Use server-side history if available (Primary Truth)
+        if (state.history && Array.isArray(state.history)) {
+            rounds = state.history.map(h => ({
+                round: h.round,
+                bidA: Number(h.p1Bid),
+                bidB: Number(h.p2Bid),
+                winner: h.winner,
+                balanceA: Number(h.balanceA),
+                balanceB: Number(h.balanceB)
+            }));
+        } else {
+            // Fallback: Build round entry from cumulative state
+            rounds = [...existingRounds];
+            
+            const knownRounds = rounds.length;
+            if (completedRounds > knownRounds || (completedRounds >= 5 && knownRounds < 5)) {
+                
+                // If status is Completed (2) and we don't have history, we might miss data.
+                // But let's try to interpolate as best as we can.
 
-            // Reconstruct per-round info for newly completed rounds
-            // Since we only get cumulative state, we attribute the entire diff to the latest round
-            const prevWinsA = rounds.reduce((acc, r) => acc + (r.winner === 'A' ? 1 : 0), 0);
-            const prevWinsB = rounds.reduce((acc, r) => acc + (r.winner === 'B' ? 1 : 0), 0);
+                const totalCompleted = Math.min(completedRounds, 5);
+                const prevBalA = knownRounds > 0 ? rounds[knownRounds - 1].balanceA : 20;
+                const prevBalB = knownRounds > 0 ? rounds[knownRounds - 1].balanceB : 20;
 
-            const newWinsA = p1Wins - prevWinsA;
-            const newWinsB = p2Wins - prevWinsB;
+                const roundsToAdd = totalCompleted - knownRounds;
+                if (roundsToAdd > 0) {
+                    for (let i = 0; i < roundsToAdd; i++) {
+                        const roundNum = knownRounds + i + 1;
+                        const isLastNew = i === roundsToAdd - 1;
 
-            // How many new rounds to add
-            const roundsToAdd = totalCompleted - knownRounds;
-            if (roundsToAdd > 0) {
-                // If multiple rounds completed between polls, we add them individually
-                // but only the last one gets the real balance diff
-                for (let i = 0; i < roundsToAdd; i++) {
-                    const roundNum = knownRounds + i + 1;
-                    const isLastNew = i === roundsToAdd - 1;
+                        // Interpolate balance linearly
+                        const progress = (i + 1) / roundsToAdd;
+                        const balA = isLastNew ? p1Balance : (prevBalA - (prevBalA - p1Balance) * progress);
+                        const balB = isLastNew ? p2Balance : (prevBalB - (prevBalB - p2Balance) * progress);
+                        
+                        // Estimate bids
+                        const stepPrevBalA = i === 0 ? prevBalA : (prevBalA - (prevBalA - p1Balance) * (i / roundsToAdd));
+                        const stepPrevBalB = i === 0 ? prevBalB : (prevBalB - (prevBalB - p2Balance) * (i / roundsToAdd));
 
-                    // For intermediate rounds we don't have exact data - estimate
-                    let winner = 'Tie';
-                    if (i < newWinsA) winner = 'A';
-                    else if (i < newWinsA + newWinsB) winner = i < newWinsA ? 'A' : 'B';
-                    // Simplified: attribute wins sequentially
+                        let bidA = Math.max(0, stepPrevBalA - balA);
+                        let bidB = Math.max(0, stepPrevBalB - balB);
 
-                    // For the last new round, use current balances
-                    const balA = isLastNew ? p1Balance : (prevBalA - Math.floor((prevBalA - p1Balance) * ((i + 1) / roundsToAdd)));
-                    const balB = isLastNew ? p2Balance : (prevBalB - Math.floor((prevBalB - p2Balance) * ((i + 1) / roundsToAdd)));
-
-                    // Estimate bids from balance changes
-                    const bidA = isLastNew ? Math.max(0, (i === 0 ? prevBalA : rounds[rounds.length - 1]?.balanceA ?? prevBalA) - p1Balance) : 0;
-                    const bidB = isLastNew ? Math.max(0, (i === 0 ? prevBalB : rounds[rounds.length - 1]?.balanceB ?? prevBalB) - p2Balance) : 0;
-
-                    rounds.push({
-                        round: roundNum,
-                        bidA: bidA || Math.floor(Math.random() * 5) + 1,
-                        bidB: bidB || Math.floor(Math.random() * 5) + 1,
-                        winner,
-                        balanceA: balA,
-                        balanceB: balB,
-                    });
+                        bidA = Math.round(bidA * 10) / 10;
+                        bidB = Math.round(bidB * 10) / 10;
+                        
+                        let winner = 'Tie';
+                        if (bidA > bidB) winner = 'A';
+                        else if (bidB > bidA) winner = 'B';
+                        
+                        rounds.push({
+                            round: roundNum,
+                            bidA: bidA,
+                            bidB: bidB,
+                            winner,
+                            balanceA: Number(balA.toFixed(1)),
+                            balanceB: Number(balB.toFixed(1)),
+                        });
+                    }
                 }
             }
         }
@@ -107,7 +119,7 @@ const MatchPage = () => {
             agentA: { type: agentAType || 'Unknown', startBalance: 20 },
             agentB: { type: agentBType || 'Unknown', startBalance: 20 },
             rounds,
-            _completedRounds: Math.min(Number(state.currentRound) > 0 ? Number(state.currentRound) - 1 : 0, 5),
+            _completedRounds: completedRounds,
             _status: Number(state.status),
             _p1Wins: Number(state.player1.wins ?? state.player1[1]),
             _p2Wins: Number(state.player2.wins ?? state.player2[1]),

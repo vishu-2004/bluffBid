@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import matchRoutes from './routes/match.js';
+import analyticsRoutes from './routes/analytics.js';
 import swaggerUi from 'swagger-ui-express';
 import swaggerJsDoc from 'swagger-jsdoc';
 
@@ -14,6 +15,7 @@ app.use(cors());
 app.use(express.json());
 
 app.use('/api/match', matchRoutes);
+app.use('/api/analytics', analyticsRoutes);
 
 
 // Swagger setup
