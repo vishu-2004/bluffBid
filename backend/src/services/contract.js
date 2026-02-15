@@ -22,13 +22,33 @@ const monadChain = {
     },
 };
 
-const chain = process.env.PROD === 'true' ? monadChain : hardhat;
-const transport = http(process.env.PROD === 'true'
+// Check PROD mode - handle various formats (true, "true", TRUE, etc.)
+const prodValue = process.env.PROD?.toLowerCase().trim();
+const isProd = prodValue === 'true' || prodValue === '1';
+
+console.log('═══════════════════════════════════════');
+console.log('🔧 Contract Configuration:');
+console.log(`   PROD env value: "${process.env.PROD}"`);
+console.log(`   isProd: ${isProd}`);
+console.log(`   Chain: ${isProd ? 'Monad Testnet' : 'Hardhat (Local)'}`);
+
+const chain = isProd ? monadChain : hardhat;
+const rpcUrl = isProd
     ? (process.env.MONAD_RPC_URL || 'https://testnet-rpc.monad.xyz')
-    : (process.env.HARDHAT_RPC_URL || 'http://127.0.0.1:8545'));
+    : (process.env.HARDHAT_RPC_URL || 'http://127.0.0.1:8545');
+
+console.log(`   RPC URL: ${rpcUrl}`);
+console.log(`   Contract Address: ${process.env.CONTRACT_ADDRESS || 'NOT SET'}`);
+console.log('═══════════════════════════════════════');
+
+if (isProd && !process.env.CONTRACT_ADDRESS) {
+    console.error('❌ ERROR: CONTRACT_ADDRESS is required when PROD=true');
+    throw new Error('CONTRACT_ADDRESS environment variable is required in production mode');
+}
+
+const transport = http(rpcUrl);
 
 // Load ABI from artifacts
-// Assuming backend is sibling to contracts
 const artifactPath = '../../../contracts/artifacts/contracts/BluffBid.sol/BluffBid.json';
 const artifact = JSON.parse(fs.readFileSync(new URL(artifactPath, import.meta.url)));
 
@@ -36,7 +56,6 @@ const contractAddress = process.env.CONTRACT_ADDRESS;
 
 if (!contractAddress) {
     console.error("CONTRACT_ADDRESS not set in .env");
-    // For local dev, we might need to deploy first.
 }
 
 // Clients
@@ -48,9 +67,6 @@ export const publicClient = createPublicClient({
 // ═══════════════════════════════════════
 //  STRATEGY-SPECIFIC WALLETS
 // ═══════════════════════════════════════
-// Each strategy (aggressive, conservative, adaptive) gets its own wallet.
-// Players must pick DIFFERENT strategies, so wallets are always distinct.
-// Hardhat Default Accounts 0-2:
 const HARDHAT_KEYS = [
     '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80', // 0
     '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d', // 1
@@ -58,7 +74,22 @@ const HARDHAT_KEYS = [
 ];
 
 function makeWalletClient(envKey, defaultIndex) {
-    const account = privateKeyToAccount(process.env[envKey] || HARDHAT_KEYS[defaultIndex]);
+    let key;
+    if (isProd) {
+        key = process.env[envKey];
+        if (!key) {
+            const errorMsg = `Environment variable ${envKey} is REQUIRED in PROD mode. Please set it in your .env file.`;
+            console.error(`❌ ${errorMsg}`);
+            throw new Error(errorMsg);
+        }
+        console.log(`   ✓ ${envKey}: ${key.substring(0, 10)}...${key.substring(key.length - 8)}`);
+    } else {
+        key = HARDHAT_KEYS[defaultIndex];
+        console.log(`   ✓ ${envKey}: Using Hardhat default key (Account ${defaultIndex})`);
+    }
+
+    if (key && !key.startsWith('0x')) key = `0x${key}`;
+    const account = privateKeyToAccount(key);
     return createWalletClient({ account, chain, transport });
 }
 

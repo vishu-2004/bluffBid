@@ -44,6 +44,12 @@ app.get('/', (req, res) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-    console.log(`Environment: ${process.env.PROD === 'true' ? 'One (Testnet)' : 'Localhost (Hardhat)'}`);
+    console.log(`\n🚀 Server running on port ${PORT}`);
+    const isProd = process.env.PROD?.toLowerCase().trim() === 'true';
+    console.log(`Environment: ${isProd ? 'Monad Testnet (PROD)' : 'Localhost (Hardhat)'}`);
+    if (isProd) {
+        console.log(`   RPC: ${process.env.MONAD_RPC_URL || 'https://testnet-rpc.monad.xyz'}`);
+        console.log(`   Contract: ${process.env.CONTRACT_ADDRESS || 'NOT SET'}`);
+    }
+    console.log('');
 });

@@ -15,7 +15,7 @@ async function main() {
 
     console.log("✅ BluffBid deployed to:", address);
     console.log("\n📋 Contract Details:");
-    console.log("   - Match Deposit:", await bluffBid.MATCH_DEPOSIT(), "wei (20 MON)");
+    console.log("   - Match Deposit:", await bluffBid.MATCH_DEPOSIT(), "wei (4 MON)");
     console.log("   - Total Rounds:", await bluffBid.TOTAL_ROUNDS());
     console.log("   - Max Bid:", await bluffBid.MAX_BID());
     console.log("   - Move Timeout:", await bluffBid.MOVE_TIMEOUT(), "seconds");
