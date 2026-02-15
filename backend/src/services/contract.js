@@ -86,14 +86,22 @@ async function writeContract(client, functionName, args = [], value = 0n) {
     }
 }
 
+// Configuration constants (scaled by 10 internally)
+export const MATCH_DEPOSIT_MON = 4.0; // 4.0 MON
+export const MATCH_DEPOSIT_SCALED = 40; // 40 units (4.0 * 10)
+export const MAX_BID_MON = 2.5; // 2.5 MON
+export const MAX_BID_SCALED = 25; // 25 units (2.5 * 10)
+export const STEP_SIZE_MON = 0.1; // 0.1 MON
+export const STEP_SIZE_SCALED = 1; // 1 unit (0.1 * 10)
+
 // Start Match (Always Agent A Init)
 export async function createMatch() {
-    return await writeContract(walletClientA, 'createMatch', [], parseEther('20'));
+    return await writeContract(walletClientA, 'createMatch', [], parseEther('4'));
 }
 
 // Join Match (Always Agent B Join)
 export async function joinMatch(matchId) {
-    return await writeContract(walletClientB, 'joinMatch', [matchId], parseEther('20'));
+    return await writeContract(walletClientB, 'joinMatch', [matchId], parseEther('4'));
 }
 
 // Commit Bid (Dynamic Client based on player)

@@ -11,9 +11,10 @@ contract BluffBid {
     // Constants
     // -------------------------------------------------------------------------
 
-    uint256 public constant MATCH_DEPOSIT = 20 ether;
+    uint256 public constant MATCH_DEPOSIT = 4 ether; // 4.0 MON (payment amount)
+    uint256 public constant STARTING_BALANCE = 40; // 4.0 MON in scaled units (internal)
     uint256 public constant TOTAL_ROUNDS = 5;
-    uint256 public constant MAX_BID = 5;
+    uint256 public constant MAX_BID = 25; // 2.5 MON (scaled by 10: 25 units = 2.5 MON)
     uint256 public constant MOVE_TIMEOUT = 24 hours;
 
     // -------------------------------------------------------------------------
@@ -122,7 +123,7 @@ contract BluffBid {
 
         m.player1 = PlayerState({
             addr: msg.sender,
-            balance: MATCH_DEPOSIT,
+            balance: STARTING_BALANCE, // Store in scaled units (40 = 4.0 MON)
             wins: 0,
             isActive: true
         });
@@ -142,7 +143,7 @@ contract BluffBid {
 
         m.player2 = PlayerState({
             addr: msg.sender,
-            balance: MATCH_DEPOSIT,
+            balance: STARTING_BALANCE, // Store in scaled units (40 = 4.0 MON)
             wins: 0,
             isActive: true
         });

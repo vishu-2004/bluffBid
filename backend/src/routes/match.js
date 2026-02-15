@@ -1,5 +1,5 @@
 import express from 'express';
-import { runMatch } from '../services/agentEngine.js';
+import { runMatch, matchExecutors } from '../services/agentEngine.js';
 import { getMatchState } from '../services/contract.js';
 
 const router = express.Router();
@@ -79,6 +79,12 @@ router.get('/:id', async (req, res) => {
             state,
             (key, value) => typeof value === 'bigint' ? value.toString() : value
         ));
+
+        // Inject server-side history if available
+        const executor = matchExecutors[id];
+        if (executor && executor.history) {
+            jsonState.history = executor.history;
+        }
 
         res.json(jsonState);
     } catch (e) {

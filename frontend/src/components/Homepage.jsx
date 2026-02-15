@@ -24,7 +24,6 @@ const Homepage = () => {
         { id: 'Aggressive', label: 'Aggressive', desc: 'High bids, high risk. Dominates early rounds.', icon: '🔥' },
         { id: 'Conservative', label: 'Conservative', desc: 'Preserves capital. Wins through endurance.', icon: '🛡️' },
         { id: 'Adaptive', label: 'Adaptive', desc: 'Reads opponents. Adjusts strategy per round.', icon: '🧠' },
-        { id: 'MonteCarlo', label: 'MonteCarlo', desc: 'Probabilistic simulation. Calculated strikes.', icon: '🎯' },
     ];
 
     const handleStartMatch = () => {
@@ -44,18 +43,33 @@ const Homepage = () => {
         setError('');
 
         try {
+            // Map frontend agent names to backend agent names
+            const agentMap = {
+                'Aggressive': 'openRouterAggressive',
+                'Conservative': 'openRouterConservative',
+                'Adaptive': 'openRouterAdaptive'
+            };
+
             const response = await fetch('/api/match/start', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ agentA, agentB }),
+                body: JSON.stringify({
+                    agentA: agentMap[agentA] || agentA.toLowerCase(),
+                    agentB: agentMap[agentB] || agentB.toLowerCase()
+                }),
             });
 
-            if (!response.ok) throw new Error('Failed to start match');
+            if (!response.ok) {
+                const errData = await response.json().catch(() => ({}));
+                throw new Error(errData.error || 'Failed to start match');
+            }
             const data = await response.json();
-            navigate(`/match/${data.id}?agentA=${encodeURIComponent(agentA)}&agentB=${encodeURIComponent(agentB)}`);
+            navigate(`/match/${data.matchId}?agentA=${encodeURIComponent(agentA)}&agentB=${encodeURIComponent(agentB)}`);
         } catch (err) {
-            console.log('API unavailable, navigating to demo match');
-            navigate(`/match/demo?agentA=${encodeURIComponent(agentA)}&agentB=${encodeURIComponent(agentB)}`);
+            console.error('Match start failed:', err);
+            setError(err.message || 'Failed to start match. Is the backend running?');
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -194,12 +208,13 @@ const Homepage = () => {
 
                         <div className="space-y-4 text-base md:text-lg font-body">
                             {[
-                                { label: 'Deposit per Agent', value: '20 MON', color: 'text-success' },
-                                { label: 'Bid Range', value: '0–5 MON', color: 'text-text-light' },
+                                { label: 'Deposit per Agent', value: '4.0 MON', color: 'text-success' },
+                                { label: 'Bid Range', value: '0.0–2.5 MON', color: 'text-text-light' },
+                                { label: 'Bid Step', value: '0.1 MON', color: 'text-text-light' },
                                 { label: 'Rounds', value: 'Exactly 5', color: 'text-text-light' },
                                 { label: 'Round Winner', value: 'Highest bid secures it', color: 'text-text-light/80' },
                                 { label: 'Tie', value: 'No round secured', color: 'text-text-muted' },
-                                { label: 'Victory', value: 'Most rounds wins the 40 MON pot', color: 'text-success' },
+                                { label: 'Victory', value: 'Most rounds wins the 8.0 MON pot', color: 'text-success' },
                             ].map((rule, i) => (
                                 <div key={i} className="flex items-start group">
                                     <span className="text-primary mr-4 font-bold text-lg mt-0.5 group-hover:scale-125 transition-transform">▸</span>

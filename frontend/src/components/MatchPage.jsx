@@ -1,22 +1,34 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 
-// Mock data for demonstration
+// Configuration constants
+const STARTING_BALANCE_MON = 4.0;
+const TOTAL_POT_MON = 8.0;
+const SCALE_FACTOR = 10; // Contract scales by 10
+
+// Helper to convert wei to scaled units, then to MON
+const weiToScaled = (wei) => Math.floor(Number(wei) / 1e17); // 4.0 ether = 4e18 wei, scaled = 40
+const scaledToMON = (scaled) => scaled / SCALE_FACTOR; // 40 -> 4.0
+const weiToMON = (wei) => scaledToMON(weiToScaled(wei));
+
+// Fallback mock data (used only when backend is unreachable)
 const generateMockMatchData = (id, agentAType, agentBType) => {
     return {
         id,
-        totalPot: 40,
-        agentA: { type: agentAType || 'Adaptive', startBalance: 20 },
-        agentB: { type: agentBType || 'Aggressive', startBalance: 20 },
+        totalPot: TOTAL_POT_MON,
+        agentA: { type: agentAType || 'Adaptive', startBalance: STARTING_BALANCE_MON },
+        agentB: { type: agentBType || 'Aggressive', startBalance: STARTING_BALANCE_MON },
         rounds: [
-            { round: 1, bidA: 3, bidB: 4, winner: 'B', balanceA: 17, balanceB: 16 },
-            { round: 2, bidA: 2, bidB: 2, winner: 'Tie', balanceA: 15, balanceB: 14 },
-            { round: 3, bidA: 4, bidB: 3, winner: 'A', balanceA: 11, balanceB: 11 },
-            { round: 4, bidA: 3, bidB: 4, winner: 'B', balanceA: 8, balanceB: 7 },
-            { round: 5, bidA: 4, bidB: 5, winner: 'B', balanceA: 4, balanceB: 2 },
+            { round: 1, bidA: 1.5, bidB: 2.0, winner: 'B', balanceA: 2.5, balanceB: 2.0 },
+            { round: 2, bidA: 1.0, bidB: 1.0, winner: 'Tie', balanceA: 1.5, balanceB: 1.0 },
+            { round: 3, bidA: 2.0, bidB: 1.5, winner: 'A', balanceA: 0.0, balanceB: 0.0 },
+            { round: 4, bidA: 0.0, bidB: 0.0, winner: 'Tie', balanceA: 0.0, balanceB: 0.0 },
+            { round: 5, bidA: 0.0, bidB: 0.0, winner: 'Tie', balanceA: 0.0, balanceB: 0.0 },
         ],
     };
 };
+
+const POLL_INTERVAL_MS = 3000;
 
 const MatchPage = () => {
     const { id } = useParams();
@@ -29,46 +41,204 @@ const MatchPage = () => {
     const [error, setError] = useState(null);
     const [visibleRounds, setVisibleRounds] = useState(0);
     const [showResultPopup, setShowResultPopup] = useState(false);
-    const intervalRef = useRef(null);
+    const [usingMockData, setUsingMockData] = useState(false);
+    const pollRef = useRef(null);
+    const prevRoundRef = useRef(0);
 
+    // Transform on-chain state into the matchData shape the UI expects
+    const transformApiState = (state, existingRounds = []) => {
+        const currentRound = Number(state.currentRound);
+        // Contract now stores balances directly in scaled units (40 = 4.0 MON)
+        // Convert scaled units to MON
+        const p1BalanceScaled = Number(state.player1.balance ?? state.player1[0]);
+        const p2BalanceScaled = Number(state.player2.balance ?? state.player2[0]);
+        const p1Balance = scaledToMON(p1BalanceScaled);
+        const p2Balance = scaledToMON(p2BalanceScaled);
+        const p1Wins = Number(state.player1.wins ?? state.player1[1]);
+        const p2Wins = Number(state.player2.wins ?? state.player2[1]);
+        const status = Number(state.status);
+
+        let rounds = [];
+        let completedRounds = currentRound > 0 ? currentRound - 1 : 0;
+        if (status === 2) {
+            completedRounds = 5;
+        }
+
+        // Use server-side history if available (Primary Truth)
+        if (state.history && Array.isArray(state.history)) {
+            rounds = state.history.map(h => ({
+                round: h.round,
+                // Bids are in scaled units (0-25), convert to MON (0.0-2.5)
+                bidA: scaledToMON(Number(h.p1Bid)),
+                bidB: scaledToMON(Number(h.p2Bid)),
+                winner: h.winner,
+                // Balances are in scaled units, convert to MON
+                balanceA: scaledToMON(Number(h.balanceA)),
+                balanceB: scaledToMON(Number(h.balanceB))
+            }));
+        } else {
+            // Fallback: Build round entry from cumulative state
+            rounds = [...existingRounds];
+
+            const knownRounds = rounds.length;
+            if (completedRounds > knownRounds || (completedRounds >= 5 && knownRounds < 5)) {
+
+                // If status is Completed (2) and we don't have history, we might miss data.
+                // But let's try to interpolate as best as we can.
+
+                const totalCompleted = Math.min(completedRounds, 5);
+                const prevBalA = knownRounds > 0 ? rounds[knownRounds - 1].balanceA : STARTING_BALANCE_MON;
+                const prevBalB = knownRounds > 0 ? rounds[knownRounds - 1].balanceB : STARTING_BALANCE_MON;
+
+                const roundsToAdd = totalCompleted - knownRounds;
+                if (roundsToAdd > 0) {
+                    for (let i = 0; i < roundsToAdd; i++) {
+                        const roundNum = knownRounds + i + 1;
+                        const isLastNew = i === roundsToAdd - 1;
+
+                        // Interpolate balance linearly
+                        const progress = (i + 1) / roundsToAdd;
+                        const balA = isLastNew ? p1Balance : (prevBalA - (prevBalA - p1Balance) * progress);
+                        const balB = isLastNew ? p2Balance : (prevBalB - (prevBalB - p2Balance) * progress);
+
+                        // Estimate bids
+                        const stepPrevBalA = i === 0 ? prevBalA : (prevBalA - (prevBalA - p1Balance) * (i / roundsToAdd));
+                        const stepPrevBalB = i === 0 ? prevBalB : (prevBalB - (prevBalB - p2Balance) * (i / roundsToAdd));
+
+                        let bidA = Math.max(0, stepPrevBalA - balA);
+                        let bidB = Math.max(0, stepPrevBalB - balB);
+
+                        bidA = Math.round(bidA * 10) / 10;
+                        bidB = Math.round(bidB * 10) / 10;
+
+                        let winner = 'Tie';
+                        if (bidA > bidB) winner = 'A';
+                        else if (bidB > bidA) winner = 'B';
+
+                        rounds.push({
+                            round: roundNum,
+                            bidA: bidA,
+                            bidB: bidB,
+                            winner,
+                            balanceA: Number(balA.toFixed(1)),
+                            balanceB: Number(balB.toFixed(1)),
+                        });
+                    }
+                }
+            }
+        }
+
+        return {
+            id: state.id?.toString() || id,
+            totalPot: TOTAL_POT_MON,
+            agentA: { type: agentAType || 'Unknown', startBalance: STARTING_BALANCE_MON },
+            agentB: { type: agentBType || 'Unknown', startBalance: STARTING_BALANCE_MON },
+            rounds,
+            _completedRounds: completedRounds,
+            _status: Number(state.status),
+            _p1Wins: Number(state.player1.wins ?? state.player1[1]),
+            _p2Wins: Number(state.player2.wins ?? state.player2[1]),
+        };
+    };
+
+    // Fetch match state from API
+    const fetchMatchState = async (existingRounds = []) => {
+        const response = await fetch(`/api/match/${id}`);
+        if (!response.ok) throw new Error('Match not found');
+        const state = await response.json();
+        return transformApiState(state, existingRounds);
+    };
+
+    // Initial fetch
     useEffect(() => {
-        const fetchMatchData = async () => {
+        let cancelled = false;
+        const init = async () => {
             try {
-                const response = await fetch(`/api/match/${id}`);
-                if (!response.ok) throw new Error('Match not found');
-                const data = await response.json();
-                setMatchData(data);
+                const data = await fetchMatchState();
+                if (!cancelled) {
+                    setMatchData(data);
+                    setVisibleRounds(data.rounds.length);
+                    prevRoundRef.current = data._completedRounds;
+                }
             } catch (err) {
-                console.log('Using mock data for demonstration');
-                setMatchData(generateMockMatchData(id, agentAType, agentBType));
+                console.warn('API unavailable, using mock data:', err.message);
+                if (!cancelled) {
+                    setMatchData(generateMockMatchData(id, agentAType, agentBType));
+                    setUsingMockData(true);
+                }
             } finally {
-                setIsLoading(false);
+                if (!cancelled) setIsLoading(false);
             }
         };
-        fetchMatchData();
+        init();
+        return () => { cancelled = true; };
     }, [id]);
 
+    // Polling for real API data
     useEffect(() => {
-        if (!matchData || matchData.rounds.length === 0) return;
-        intervalRef.current = setInterval(() => {
+        if (!matchData || usingMockData) return;
+
+        const isMatchDone = (data) => {
+            return data.rounds.length >= 5 || data._status >= 3;
+        };
+
+        if (isMatchDone(matchData)) {
+            // Match already complete, show result
+            setTimeout(() => setShowResultPopup(true), 1000);
+            return;
+        }
+
+        pollRef.current = setInterval(async () => {
+            try {
+                const updated = await fetchMatchState(matchData.rounds);
+                setMatchData(updated);
+
+                // Reveal new rounds
+                if (updated.rounds.length > visibleRounds) {
+                    setVisibleRounds(updated.rounds.length);
+                }
+
+                // Check if match is done
+                if (isMatchDone(updated)) {
+                    clearInterval(pollRef.current);
+                    pollRef.current = null;
+                    setTimeout(() => setShowResultPopup(true), 1500);
+                }
+            } catch (err) {
+                console.error('Polling error:', err);
+            }
+        }, POLL_INTERVAL_MS);
+
+        return () => {
+            if (pollRef.current) {
+                clearInterval(pollRef.current);
+                pollRef.current = null;
+            }
+        };
+    }, [matchData, usingMockData, visibleRounds]);
+
+    // Mock data progressive reveal (only when using mock data)
+    useEffect(() => {
+        if (!matchData || !usingMockData) return;
+        const intervalRef = setInterval(() => {
             setVisibleRounds((prev) => {
                 const next = prev + 1;
                 if (next >= matchData.rounds.length) {
-                    clearInterval(intervalRef.current);
+                    clearInterval(intervalRef);
                     setTimeout(() => setShowResultPopup(true), 1000);
                 }
                 return next;
             });
         }, 1500);
-        return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-    }, [matchData]);
+        return () => clearInterval(intervalRef);
+    }, [matchData, usingMockData]);
 
     const getProgressiveStats = () => {
-        if (!matchData) return { winsA: 0, winsB: 0, balanceA: 20, balanceB: 20, currentRound: 0 };
+        if (!matchData) return { winsA: 0, winsB: 0, balanceA: STARTING_BALANCE_MON, balanceB: STARTING_BALANCE_MON, currentRound: 0 };
         const revealedRounds = matchData.rounds.slice(0, visibleRounds);
         let winsA = 0, winsB = 0;
-        let balanceA = matchData.agentA.startBalance || 20;
-        let balanceB = matchData.agentB.startBalance || 20;
+        let balanceA = matchData.agentA.startBalance || STARTING_BALANCE_MON;
+        let balanceB = matchData.agentB.startBalance || STARTING_BALANCE_MON;
         if (revealedRounds.length > 0) {
             const lastRound = revealedRounds[revealedRounds.length - 1];
             balanceA = lastRound.balanceA;
@@ -194,7 +364,10 @@ const MatchPage = () => {
                             <div className="bg-bg-dark/50 p-4 border border-primary/10">
                                 <div className="text-xs text-text-muted font-subheading mb-1 uppercase tracking-wider">Balance</div>
                                 <div className="text-2xl font-heading text-success" style={{ textShadow: '0 0 10px rgba(0, 245, 160, 0.3)' }}>
-                                    {stats.balanceA} <span className="text-sm text-text-muted">MON</span>
+                                    {stats.balanceA.toFixed(1)} <span className="text-sm text-text-muted">MON</span>
+                                    {stats.balanceA === 0 && (
+                                        <div className="text-xs text-danger mt-1">Balance Exhausted</div>
+                                    )}
                                 </div>
                             </div>
                             <div className="bg-bg-dark/50 p-4 border border-primary/10">
@@ -242,7 +415,10 @@ const MatchPage = () => {
                             <div className="bg-bg-dark/50 p-4 border border-danger/10">
                                 <div className="text-xs text-text-muted font-subheading mb-1 uppercase tracking-wider">Balance</div>
                                 <div className="text-2xl font-heading text-success" style={{ textShadow: '0 0 10px rgba(0, 245, 160, 0.3)' }}>
-                                    {stats.balanceB} <span className="text-sm text-text-muted">MON</span>
+                                    {stats.balanceB.toFixed(1)} <span className="text-sm text-text-muted">MON</span>
+                                    {stats.balanceB === 0 && (
+                                        <div className="text-xs text-danger mt-1">Balance Exhausted</div>
+                                    )}
                                 </div>
                             </div>
                             <div className="bg-bg-dark/50 p-4 border border-danger/10">
@@ -288,13 +464,13 @@ const MatchPage = () => {
                                         <td className="p-3">
                                             <span className="font-heading text-primary"
                                                 style={{ textShadow: round.winner === 'A' ? '0 0 10px rgba(124, 58, 237, 0.5)' : 'none' }}>
-                                                {round.bidA} <span className="text-xs text-text-muted">MON</span>
+                                                {round.bidA.toFixed(1)} <span className="text-xs text-text-muted">MON</span>
                                             </span>
                                         </td>
                                         <td className="p-3">
                                             <span className="font-heading text-danger"
                                                 style={{ textShadow: round.winner === 'B' ? '0 0 10px rgba(255, 59, 59, 0.5)' : 'none' }}>
-                                                {round.bidB} <span className="text-xs text-text-muted">MON</span>
+                                                {round.bidB.toFixed(1)} <span className="text-xs text-text-muted">MON</span>
                                             </span>
                                         </td>
                                         <td className="p-3 font-heading">
@@ -306,8 +482,8 @@ const MatchPage = () => {
                                                 <span className="px-3 py-1 text-xs bg-text-muted/10 text-text-muted border border-text-muted/20">TIE</span>
                                             )}
                                         </td>
-                                        <td className="p-3 font-body text-success text-sm">{round.balanceA} MON</td>
-                                        <td className="p-3 font-body text-success text-sm">{round.balanceB} MON</td>
+                                        <td className="p-3 font-body text-success text-sm">{round.balanceA.toFixed(1)} MON</td>
+                                        <td className="p-3 font-body text-success text-sm">{round.balanceB.toFixed(1)} MON</td>
                                     </tr>
                                 ))}
 
@@ -413,7 +589,7 @@ const MatchPage = () => {
                                     DRAW
                                 </h2>
                                 <p className="text-base font-subheading text-text-muted mb-2">
-                                    Pot split equally. Neither agent dominated.
+                                    Pot split equally ({matchData.totalPot > 0 ? (matchData.totalPot / 2).toFixed(1) : '0.0'} MON each). Neither agent dominated.
                                 </p>
                             </>
                         ) : (
@@ -425,7 +601,7 @@ const MatchPage = () => {
                                     {result.type} Agent
                                 </p>
                                 <p className="text-sm font-subheading text-text-muted mb-2">
-                                    Secures the {matchData.totalPot} MON pot. Round secured. Bankroll intact.
+                                    Secures the {matchData.totalPot.toFixed(1)} MON pot. Round secured. Bankroll intact.
                                 </p>
                             </>
                         )}

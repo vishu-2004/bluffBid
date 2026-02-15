@@ -20,6 +20,8 @@
     "viem": "^2.45.3"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "@openrouter/sdk": "^0.8.0",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1"
   }
