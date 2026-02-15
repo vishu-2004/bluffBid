@@ -38,6 +38,10 @@ export async function runMatch(agentAName, agentBName) {
         // Extract matchId from logs. 
         // Event MatchCreated(uint256 indexed matchId, address indexed creator);
         // Topic 0: Sig, Topic 1: MatchId, Topic 2: Creator
+        console.log(receipt.logs);
+        if (!receipt.logs || receipt.logs.length === 0) {
+            throw new Error('createMatch transaction produced no logs — check RPC compatibility and contract deployment.');
+        }
         const matchId = BigInt(receipt.logs[0].topics[1]);
         console.log(`Match Created! ID: ${matchId}`);
 
@@ -212,7 +216,7 @@ export class GameEngine {
         // 4. Record enriched history with round outcome and NEW BALANCE
         // Need to fetch state again to get updated balances
         const postRoundState = await getMatchState(this.matchId);
-        
+
         // Balances are already in scaled units (no conversion needed)
         const postBalance1Scaled = Number(postRoundState.player1.balance);
         const postBalance2Scaled = Number(postRoundState.player2.balance);
