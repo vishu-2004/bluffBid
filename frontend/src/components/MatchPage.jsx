@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { getApiUrl } from '../config/api.js';
 
 // Configuration constants
 const STARTING_BALANCE_MON = 4.0;
@@ -143,7 +144,7 @@ const MatchPage = () => {
 
     // Fetch match state from API
     const fetchMatchState = async (existingRounds = []) => {
-        const response = await fetch(`/api/match/${id}`);
+        const response = await fetch(getApiUrl(`/api/match/${id}`));
         if (!response.ok) throw new Error('Match not found');
         const state = await response.json();
         return transformApiState(state, existingRounds);
@@ -630,8 +631,23 @@ const MatchPage = () => {
                             <Link to="/analytics" className="btn-secondary text-base">
                                 VIEW ANALYTICS
                             </Link>
+                            <button 
+                                onClick={() => setShowResultPopup(false)} 
+                                className="btn-secondary text-base border-text-muted/30 hover:border-text-muted/50"
+                            >
+                                VIEW DETAILS
+                            </button>
                         </div>
                     </div>
+                    
+                    {/* Close Button (X) */}
+                    <button
+                        onClick={() => setShowResultPopup(false)}
+                        className="absolute top-4 right-4 w-10 h-10 flex items-center justify-center text-text-muted hover:text-text-light transition-colors border border-text-muted/20 hover:border-text-muted/40 rounded-full bg-card-bg/50 hover:bg-card-bg"
+                        aria-label="Close popup"
+                    >
+                        <span className="text-xl font-bold">×</span>
+                    </button>
                 </div>
             )}
         </div>

@@ -123,10 +123,10 @@ export class GameEngine {
         const balance1Scaled = Number(state.player1.balance);
         const balance2Scaled = Number(state.player2.balance);
 
-        // Edge case: If both balances are 0, stop the match
+        // Edge case: If both balances are 0, both must bid 0
+        // We'll still commit/reveal so the contract can resolve the round
         if (balance1Scaled === 0 && balance2Scaled === 0) {
-            console.log(`Match ${this.matchId}: Both balances exhausted, ending match early`);
-            return;
+            console.log(`Match ${this.matchId}: Both balances exhausted on round ${round}, both will bid 0`);
         }
 
         // Build round history from each player's perspective (bids are already in scaled units)
@@ -172,9 +172,12 @@ export class GameEngine {
         ]);
 
         // Edge case validation: Ensure bids are valid
-        // Validate bid A
+        // If either balance is 0, their bid must be 0
         let bidA = Math.max(0, Math.min(MAX_BID_SCALED, decisionA.bid));
-        if (bidA > balance1Scaled) {
+        if (balance1Scaled === 0) {
+            bidA = 0;
+            console.log(`Agent A has 0 balance, setting bid to 0`);
+        } else if (bidA > balance1Scaled) {
             console.warn(`Agent A bid ${bidA} exceeds balance ${balance1Scaled}, clamping to balance`);
             bidA = balance1Scaled;
         }
@@ -185,13 +188,22 @@ export class GameEngine {
 
         // Validate bid B
         let bidB = Math.max(0, Math.min(MAX_BID_SCALED, decisionB.bid));
-        if (bidB > balance2Scaled) {
+        if (balance2Scaled === 0) {
+            bidB = 0;
+            console.log(`Agent B has 0 balance, setting bid to 0`);
+        } else if (bidB > balance2Scaled) {
             console.warn(`Agent B bid ${bidB} exceeds balance ${balance2Scaled}, clamping to balance`);
             bidB = balance2Scaled;
         }
         if (bidB < 0) {
             console.warn(`Agent B bid ${bidB} is negative, setting to 0`);
             bidB = 0;
+        }
+
+        // If both bids are 0 (both out of balance), still commit/reveal so contract can resolve
+        // The contract will handle the tie and advance to next round (or end if round 5)
+        if (bidA === 0 && bidB === 0) {
+            console.log(`Match ${this.matchId}: Both agents have 0 balance, both bidding 0 (tie round)`);
         }
 
         console.log(`Agent A [${decisionA.reason}] -> Bid: ${bidA} (${(bidA / 10).toFixed(1)} MON)`);

@@ -8,6 +8,9 @@ const agentNameMap = {
     'aggressive': 'Aggressive',
     'conservative': 'Conservative',
     'openRouter': 'Adaptive',
+    'openRouterAggressive': 'Aggressive',
+    'openRouterConservative': 'Conservative',
+    'openRouterAdaptive': 'Adaptive',
     'gemini': 'Adaptive', // Also map gemini to Adaptive
     'monteCarlo': 'MonteCarlo' // Keep for backward compatibility but won't be used
 };
@@ -30,6 +33,7 @@ export function storeMatchResult(matchData) {
     // Only store matches with the three supported agent types
     const supportedAgents = ['Aggressive', 'Conservative', 'Adaptive'];
     if (!supportedAgents.includes(frontendAgentA) || !supportedAgents.includes(frontendAgentB)) {
+        console.log(`Skipping match storage: ${matchData.agentA} (${frontendAgentA}) vs ${matchData.agentB} (${frontendAgentB}) - unsupported agent type`);
         return; // Skip storing matches with unsupported agents
     }
 
@@ -44,7 +48,8 @@ export function storeMatchResult(matchData) {
     };
 
     matchHistory.push(historyEntry);
-    console.log(`Stored match result: ${frontendAgentA} vs ${frontendAgentB} (${matchData.winsA}-${matchData.winsB})`);
+    console.log(`Stored match result: ${frontendAgentA} vs ${frontendAgentB} (${matchData.winsA}-${matchData.winsB}), rounds: ${matchData.rounds?.length || 0}`);
+    console.log(`Total matches stored: ${matchHistory.length}`);
 }
 
 /**

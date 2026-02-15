@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useState, useEffect } from 'react';
+import { getApiUrl } from '../config/api.js';
 
 // Agent configuration
 const agentConfig = {
@@ -115,11 +116,13 @@ const AnalyticsDashboard = () => {
         const fetchAnalytics = async () => {
             try {
                 setIsLoading(true);
-                const response = await fetch('/api/analytics');
+                const response = await fetch(getApiUrl('/api/analytics'));
                 if (!response.ok) {
                     throw new Error('Failed to fetch analytics');
                 }
                 const data = await response.json();
+                
+                console.log('Analytics data received:', data);
                 
                 // Transform backend data to frontend format
                 const transformedStats = data.agentStats.map(stat => ({

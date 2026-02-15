@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { getApiUrl } from '../config/api.js';
 
 const Homepage = () => {
     const navigate = useNavigate();
@@ -50,7 +51,7 @@ const Homepage = () => {
                 'Adaptive': 'openRouterAdaptive'
             };
 
-            const response = await fetch('/api/match/start', {
+            const response = await fetch(getApiUrl('/api/match/start'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
