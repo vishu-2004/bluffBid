@@ -1,4 +1,4 @@
-import { createMatch, joinMatch, commitBid, revealBid, getMatchState, walletClientA, walletClientB, publicClient, MAX_BID_SCALED } from './contract.js';
+import { createMatch, joinMatch, commitBid, revealBid, getMatchState, strategyWallets, publicClient, MAX_BID_SCALED } from './contract.js';
 import { aggressive } from '../agents/aggressive.js';
 import { conservative } from '../agents/conservative.js';
 import { monteCarlo } from '../agents/monteCarlo.js';
@@ -26,16 +26,32 @@ const AGENTS = {
 const generateSalt = () => toHex(crypto.getRandomValues(new Uint8Array(32)));
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+// Map agent name → strategy key for wallet lookup
+function getStrategyKey(agentName) {
+    const lower = agentName.toLowerCase();
+    if (lower.includes('aggressive')) return 'aggressive';
+    if (lower.includes('conservative')) return 'conservative';
+    return 'adaptive'; // default fallback
+}
+
 // Store active/completed match engines in memory for API access
 export const matchExecutors = {};
 
 export async function runMatch(agentAName, agentBName) {
     console.log(`\n=== Starting Match: ${agentAName} vs ${agentBName} ===`);
 
+    // Resolve strategy wallets for each agent
+    const strategyA = getStrategyKey(agentAName);
+    const strategyB = getStrategyKey(agentBName);
+    const walletA = strategyWallets[strategyA];
+    const walletB = strategyWallets[strategyB];
+    console.log(`Wallet A: ${strategyA} (${walletA.account.address})`);
+    console.log(`Wallet B: ${strategyB} (${walletB.account.address})`);
+
     try {
         // 1. Create Match
         console.log("Creating match...");
-        const hash = await createMatch();
+        const hash = await createMatch(walletA);
         // Wait for receipt to get ID
         const receipt = await publicClient.waitForTransactionReceipt({ hash });
         // Extract matchId from logs. 
@@ -53,11 +69,11 @@ export async function runMatch(agentAName, agentBName) {
             try {
                 // 2. Join Match
                 console.log(`Match ${matchId}: Joining...`);
-                const joinHash = await joinMatch(matchId);
+                const joinHash = await joinMatch(walletB, matchId);
                 await publicClient.waitForTransactionReceipt({ hash: joinHash });
                 console.log(`Match ${matchId}: Player 2 Joined.`);
 
-                const engine = new GameEngine(matchId, agentAName, agentBName);
+                const engine = new GameEngine(matchId, agentAName, agentBName, walletA, walletB);
                 matchExecutors[matchId.toString()] = engine; // Store for API
 
                 console.log(`Match ${matchId}: Starting Rounds...`);
@@ -99,10 +115,12 @@ export async function runMatch(agentAName, agentBName) {
 }
 
 export class GameEngine {
-    constructor(matchId, agentAName, agentBName) {
+    constructor(matchId, agentAName, agentBName, walletA, walletB) {
         this.matchId = matchId;
         this.agentA = AGENTS[agentAName];
         this.agentB = AGENTS[agentBName];
+        this.walletA = walletA;
+        this.walletB = walletB;
         this.history = [];
     }
 
@@ -202,18 +220,18 @@ export class GameEngine {
         const saltB = generateSalt();
 
         console.log("Committing Bids...");
-        const c1 = await commitBid(walletClientA, this.matchId, bidA, saltA);
+        const c1 = await commitBid(this.walletA, this.matchId, bidA, saltA);
         await publicClient.waitForTransactionReceipt({ hash: c1 });
 
-        const c2 = await commitBid(walletClientB, this.matchId, bidB, saltB);
+        const c2 = await commitBid(this.walletB, this.matchId, bidB, saltB);
         await publicClient.waitForTransactionReceipt({ hash: c2 });
 
         console.log("Bids Committed. Revealing...");
 
-        const r1 = await revealBid(walletClientA, this.matchId, bidA, saltA);
+        const r1 = await revealBid(this.walletA, this.matchId, bidA, saltA);
         await publicClient.waitForTransactionReceipt({ hash: r1 });
 
-        const r2 = await revealBid(walletClientB, this.matchId, bidB, saltB);
+        const r2 = await revealBid(this.walletB, this.matchId, bidB, saltB);
         await publicClient.waitForTransactionReceipt({ hash: r2 });
 
         // 4. Record enriched history with round outcome and NEW BALANCE

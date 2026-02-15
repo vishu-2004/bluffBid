@@ -45,25 +45,32 @@ export const publicClient = createPublicClient({
     transport
 });
 
-// Wallet Clients for Agent A and Agent B
-// Hardhat Default Accounts:
-// 0: 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
-// 1: 0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d
+// ═══════════════════════════════════════
+//  STRATEGY-SPECIFIC WALLETS
+// ═══════════════════════════════════════
+// Each strategy (aggressive, conservative, adaptive) gets its own wallet.
+// Players must pick DIFFERENT strategies, so wallets are always distinct.
+// Hardhat Default Accounts 0-2:
+const HARDHAT_KEYS = [
+    '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80', // 0
+    '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d', // 1
+    '0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a', // 2
+];
 
-const accountA = privateKeyToAccount(process.env.PRIVATE_KEY_A || '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80');
-const accountB = privateKeyToAccount(process.env.PRIVATE_KEY_B || '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d');
+function makeWalletClient(envKey, defaultIndex) {
+    const account = privateKeyToAccount(process.env[envKey] || HARDHAT_KEYS[defaultIndex]);
+    return createWalletClient({ account, chain, transport });
+}
 
-export const walletClientA = createWalletClient({
-    account: accountA,
-    chain,
-    transport
-});
+export const strategyWallets = {
+    aggressive: makeWalletClient('PRIVATE_KEY_AGGRESSIVE', 0),
+    conservative: makeWalletClient('PRIVATE_KEY_CONSERVATIVE', 1),
+    adaptive: makeWalletClient('PRIVATE_KEY_ADAPTIVE', 2),
+};
 
-export const walletClientB = createWalletClient({
-    account: accountB,
-    chain,
-    transport
-});
+// Backward compatibility — default A/B aliases
+export const walletClientA = strategyWallets.aggressive;
+export const walletClientB = strategyWallets.conservative;
 
 export const contractConfig = {
     address: contractAddress,
@@ -94,14 +101,14 @@ export const MAX_BID_SCALED = 25; // 25 units (2.5 * 10)
 export const STEP_SIZE_MON = 0.1; // 0.1 MON
 export const STEP_SIZE_SCALED = 1; // 1 unit (0.1 * 10)
 
-// Start Match (Always Agent A Init)
-export async function createMatch() {
-    return await writeContract(walletClientA, 'createMatch', [], parseEther('4'));
+// Start Match (wallet param — strategy wallet of Agent A)
+export async function createMatch(wallet = walletClientA) {
+    return await writeContract(wallet, 'createMatch', [], parseEther('4'));
 }
 
-// Join Match (Always Agent B Join)
-export async function joinMatch(matchId) {
-    return await writeContract(walletClientB, 'joinMatch', [matchId], parseEther('4'));
+// Join Match (wallet param — strategy wallet of Agent B)
+export async function joinMatch(wallet, matchId) {
+    return await writeContract(wallet, 'joinMatch', [matchId], parseEther('4'));
 }
 
 // Commit Bid (Dynamic Client based on player)
