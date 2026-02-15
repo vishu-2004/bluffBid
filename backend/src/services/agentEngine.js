@@ -3,13 +3,15 @@ import { aggressive } from '../agents/aggressive.js';
 import { conservative } from '../agents/conservative.js';
 import { monteCarlo } from '../agents/monteCarlo.js';
 import { gemini } from '../agents/gemini.js';
+import { openRouter } from '../agents/openRouter.js';
 import { toHex } from 'viem';
 
 const AGENTS = {
     'aggressive': aggressive,
     'conservative': conservative,
     'monteCarlo': monteCarlo,
-    'gemini': gemini
+    'gemini': gemini,
+    'openRouter': openRouter
 };
 
 // Helper to generate salt
