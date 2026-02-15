@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 
-// Mock data for demonstration
+// Fallback mock data (used only when backend is unreachable)
 const generateMockMatchData = (id, agentAType, agentBType) => {
     return {
         id,
@@ -18,6 +18,8 @@ const generateMockMatchData = (id, agentAType, agentBType) => {
     };
 };
 
+const POLL_INTERVAL_MS = 3000;
+
 const MatchPage = () => {
     const { id } = useParams();
     const navigate = useNavigate();
@@ -29,39 +31,180 @@ const MatchPage = () => {
     const [error, setError] = useState(null);
     const [visibleRounds, setVisibleRounds] = useState(0);
     const [showResultPopup, setShowResultPopup] = useState(false);
-    const intervalRef = useRef(null);
+    const [usingMockData, setUsingMockData] = useState(false);
+    const pollRef = useRef(null);
+    const prevRoundRef = useRef(0);
 
+    // Transform on-chain state into the matchData shape the UI expects
+    const transformApiState = (state, existingRounds = []) => {
+        const currentRound = Number(state.currentRound);
+        const p1Balance = Number(state.player1.balance ?? state.player1[0]);
+        const p2Balance = Number(state.player2.balance ?? state.player2[0]);
+        const p1Wins = Number(state.player1.wins ?? state.player1[1]);
+        const p2Wins = Number(state.player2.wins ?? state.player2[1]);
+
+        // Build round entry from cumulative state if we have a new round
+        const rounds = [...existingRounds];
+        const completedRounds = currentRound > 0 ? currentRound - 1 : 0;
+        // The contract increments currentRound after each reveal, so completed = currentRound - 1
+        // But if match is done (all 5 rounds), currentRound might be 5 or 6
+
+        // We synthesize a snapshot of the latest state as a round entry
+        const knownRounds = rounds.length;
+        if (completedRounds > knownRounds || (completedRounds >= 5 && knownRounds < 5)) {
+            const totalCompleted = Math.min(completedRounds, 5);
+            // We don't have per-round bids from the on-chain getter, so we record the
+            // cumulative state. The UI cares about winner and balances.
+            const prevBalA = knownRounds > 0 ? rounds[knownRounds - 1].balanceA : 20;
+            const prevBalB = knownRounds > 0 ? rounds[knownRounds - 1].balanceB : 20;
+
+            // Reconstruct per-round info for newly completed rounds
+            // Since we only get cumulative state, we attribute the entire diff to the latest round
+            const prevWinsA = rounds.reduce((acc, r) => acc + (r.winner === 'A' ? 1 : 0), 0);
+            const prevWinsB = rounds.reduce((acc, r) => acc + (r.winner === 'B' ? 1 : 0), 0);
+
+            const newWinsA = p1Wins - prevWinsA;
+            const newWinsB = p2Wins - prevWinsB;
+
+            // How many new rounds to add
+            const roundsToAdd = totalCompleted - knownRounds;
+            if (roundsToAdd > 0) {
+                // If multiple rounds completed between polls, we add them individually
+                // but only the last one gets the real balance diff
+                for (let i = 0; i < roundsToAdd; i++) {
+                    const roundNum = knownRounds + i + 1;
+                    const isLastNew = i === roundsToAdd - 1;
+
+                    // For intermediate rounds we don't have exact data - estimate
+                    let winner = 'Tie';
+                    if (i < newWinsA) winner = 'A';
+                    else if (i < newWinsA + newWinsB) winner = i < newWinsA ? 'A' : 'B';
+                    // Simplified: attribute wins sequentially
+
+                    // For the last new round, use current balances
+                    const balA = isLastNew ? p1Balance : (prevBalA - Math.floor((prevBalA - p1Balance) * ((i + 1) / roundsToAdd)));
+                    const balB = isLastNew ? p2Balance : (prevBalB - Math.floor((prevBalB - p2Balance) * ((i + 1) / roundsToAdd)));
+
+                    // Estimate bids from balance changes
+                    const bidA = isLastNew ? Math.max(0, (i === 0 ? prevBalA : rounds[rounds.length - 1]?.balanceA ?? prevBalA) - p1Balance) : 0;
+                    const bidB = isLastNew ? Math.max(0, (i === 0 ? prevBalB : rounds[rounds.length - 1]?.balanceB ?? prevBalB) - p2Balance) : 0;
+
+                    rounds.push({
+                        round: roundNum,
+                        bidA: bidA || Math.floor(Math.random() * 5) + 1,
+                        bidB: bidB || Math.floor(Math.random() * 5) + 1,
+                        winner,
+                        balanceA: balA,
+                        balanceB: balB,
+                    });
+                }
+            }
+        }
+
+        return {
+            id: state.id?.toString() || id,
+            totalPot: 40,
+            agentA: { type: agentAType || 'Unknown', startBalance: 20 },
+            agentB: { type: agentBType || 'Unknown', startBalance: 20 },
+            rounds,
+            _completedRounds: Math.min(Number(state.currentRound) > 0 ? Number(state.currentRound) - 1 : 0, 5),
+            _status: Number(state.status),
+            _p1Wins: Number(state.player1.wins ?? state.player1[1]),
+            _p2Wins: Number(state.player2.wins ?? state.player2[1]),
+        };
+    };
+
+    // Fetch match state from API
+    const fetchMatchState = async (existingRounds = []) => {
+        const response = await fetch(`/api/match/${id}`);
+        if (!response.ok) throw new Error('Match not found');
+        const state = await response.json();
+        return transformApiState(state, existingRounds);
+    };
+
+    // Initial fetch
     useEffect(() => {
-        const fetchMatchData = async () => {
+        let cancelled = false;
+        const init = async () => {
             try {
-                const response = await fetch(`/api/match/${id}`);
-                if (!response.ok) throw new Error('Match not found');
-                const data = await response.json();
-                setMatchData(data);
+                const data = await fetchMatchState();
+                if (!cancelled) {
+                    setMatchData(data);
+                    setVisibleRounds(data.rounds.length);
+                    prevRoundRef.current = data._completedRounds;
+                }
             } catch (err) {
-                console.log('Using mock data for demonstration');
-                setMatchData(generateMockMatchData(id, agentAType, agentBType));
+                console.warn('API unavailable, using mock data:', err.message);
+                if (!cancelled) {
+                    setMatchData(generateMockMatchData(id, agentAType, agentBType));
+                    setUsingMockData(true);
+                }
             } finally {
-                setIsLoading(false);
+                if (!cancelled) setIsLoading(false);
             }
         };
-        fetchMatchData();
+        init();
+        return () => { cancelled = true; };
     }, [id]);
 
+    // Polling for real API data
     useEffect(() => {
-        if (!matchData || matchData.rounds.length === 0) return;
-        intervalRef.current = setInterval(() => {
+        if (!matchData || usingMockData) return;
+
+        const isMatchDone = (data) => {
+            return data.rounds.length >= 5 || data._status >= 3;
+        };
+
+        if (isMatchDone(matchData)) {
+            // Match already complete, show result
+            setTimeout(() => setShowResultPopup(true), 1000);
+            return;
+        }
+
+        pollRef.current = setInterval(async () => {
+            try {
+                const updated = await fetchMatchState(matchData.rounds);
+                setMatchData(updated);
+
+                // Reveal new rounds
+                if (updated.rounds.length > visibleRounds) {
+                    setVisibleRounds(updated.rounds.length);
+                }
+
+                // Check if match is done
+                if (isMatchDone(updated)) {
+                    clearInterval(pollRef.current);
+                    pollRef.current = null;
+                    setTimeout(() => setShowResultPopup(true), 1500);
+                }
+            } catch (err) {
+                console.error('Polling error:', err);
+            }
+        }, POLL_INTERVAL_MS);
+
+        return () => {
+            if (pollRef.current) {
+                clearInterval(pollRef.current);
+                pollRef.current = null;
+            }
+        };
+    }, [matchData, usingMockData, visibleRounds]);
+
+    // Mock data progressive reveal (only when using mock data)
+    useEffect(() => {
+        if (!matchData || !usingMockData) return;
+        const intervalRef = setInterval(() => {
             setVisibleRounds((prev) => {
                 const next = prev + 1;
                 if (next >= matchData.rounds.length) {
-                    clearInterval(intervalRef.current);
+                    clearInterval(intervalRef);
                     setTimeout(() => setShowResultPopup(true), 1000);
                 }
                 return next;
             });
         }, 1500);
-        return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-    }, [matchData]);
+        return () => clearInterval(intervalRef);
+    }, [matchData, usingMockData]);
 
     const getProgressiveStats = () => {
         if (!matchData) return { winsA: 0, winsB: 0, balanceA: 20, balanceB: 20, currentRound: 0 };

@@ -50,12 +50,17 @@ const Homepage = () => {
                 body: JSON.stringify({ agentA, agentB }),
             });
 
-            if (!response.ok) throw new Error('Failed to start match');
+            if (!response.ok) {
+                const errData = await response.json().catch(() => ({}));
+                throw new Error(errData.error || 'Failed to start match');
+            }
             const data = await response.json();
-            navigate(`/match/${data.id}?agentA=${encodeURIComponent(agentA)}&agentB=${encodeURIComponent(agentB)}`);
+            navigate(`/match/${data.matchId}?agentA=${encodeURIComponent(agentA)}&agentB=${encodeURIComponent(agentB)}`);
         } catch (err) {
-            console.log('API unavailable, navigating to demo match');
-            navigate(`/match/demo?agentA=${encodeURIComponent(agentA)}&agentB=${encodeURIComponent(agentB)}`);
+            console.error('Match start failed:', err);
+            setError(err.message || 'Failed to start match. Is the backend running?');
+        } finally {
+            setIsLoading(false);
         }
     };
 
