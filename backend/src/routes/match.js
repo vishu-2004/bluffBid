@@ -46,7 +46,11 @@ router.post('/start', async (req, res) => {
             agentB
         });
     } catch (e) {
-        res.status(500).json({ error: "Failed to start match", details: e.message });
+        let errorMessage = e.message;
+        if (errorMessage.includes("insufficient funds") || errorMessage.includes("exceeds the balance of the account")) {
+            errorMessage = "Agent wallet has insufficient MON tokens to pay for the 4.0 MON deposit and gas fees.";
+        }
+        res.status(500).json({ error: errorMessage, details: e.message });
     }
 });
 

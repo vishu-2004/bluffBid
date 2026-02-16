@@ -337,11 +337,7 @@ contract BluffBid {
     // Internal Safe Transfer
     // -------------------------------------------------------------------------
 
-    function withdraw() external onlyOwner {
-        uint256 balance = address(this).balance;
-        require(balance > 0, "No funds to withdraw");
-        _safeTransfer(owner, balance);
-    }
+
 
     function _safeTransfer(address to, uint256 amount) internal {
         (bool success, ) = payable(to).call{value: amount}("");

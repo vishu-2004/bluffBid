@@ -310,8 +310,21 @@ const Homepage = () => {
 
                     {/* Error */}
                     {error && (
-                        <div className="text-danger text-center mb-6 font-body text-base animate-fade-in flex items-center justify-center gap-2">
-                            <span>⚠</span> {error}
+                        <div className="max-w-2xl mx-auto mb-8 animate-fade-in">
+                            <div className="glass-card-glow border-danger/30 bg-danger/5 p-4 flex items-center gap-4">
+                                <span className="text-2xl">⚠️</span>
+                                <div className="text-left">
+                                    <div className="text-sm font-heading text-danger uppercase tracking-wider mb-1">TRANSACTION ERROR</div>
+                                    <div className="text-sm font-body text-text-light/90 leading-relaxed">
+                                        {error}
+                                    </div>
+                                    {/* {error.includes("insufficient MON") && (
+                                        <div className="mt-2 text-xs text-text-muted italic">
+                                            Tip: Use the distribution script or a faucet to top up the agent wallets.
+                                        </div>
+                                    )} */}
+                                </div>
+                            </div>
                         </div>
                     )}
 
