@@ -16,7 +16,7 @@ app.use(cors({
     'https://bluffbid.vercel.app',
     'http://localhost:5173',
     'http://localhost:3000',
-    'https://staging.dguu3snce7cd.amplifyapp.com'g
+    'https://staging.dguu3snce7cd.amplifyapp.com'
   ],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
