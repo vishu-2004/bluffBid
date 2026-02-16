@@ -11,16 +11,7 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(cors({
-  origin: [
-    'https://bluffbid.vercel.app',
-    'http://localhost:5173',
-    'http://localhost:3000',
-  ],
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true,
-}));
+app.use(cors());
 app.use(express.json());
 
 app.use('/api/match', matchRoutes);
@@ -38,7 +29,7 @@ const swaggerOptions = {
     },
     servers: [
       {
-        url: `http://localhost:${PORT}`,
+        url: `http://3.6.50.90:${PORT}`,
       },
     ],
   },
