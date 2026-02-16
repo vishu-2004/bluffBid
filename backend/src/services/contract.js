@@ -154,6 +154,11 @@ export async function revealBid(client, matchId, bid, salt) {
     return await writeContract(client, 'revealBid', [matchId, BigInt(bid), salt]);
 }
 
+// Claim Timeout
+export async function claimTimeout(client, matchId) {
+    return await writeContract(client, 'claimTimeout', [matchId]);
+}
+
 // Get Match State
 export async function getMatchState(matchId) {
     try {

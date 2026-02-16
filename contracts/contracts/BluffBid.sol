@@ -15,7 +15,7 @@ contract BluffBid {
     uint256 public constant STARTING_BALANCE = 40; // 4.0 MON in scaled units (internal)
     uint256 public constant TOTAL_ROUNDS = 5;
     uint256 public constant MAX_BID = 25; // 2.5 MON (scaled by 10: 25 units = 2.5 MON)
-    uint256 public constant MOVE_TIMEOUT = 24 hours;
+    uint256 public constant MOVE_TIMEOUT = 10 minutes;
 
     // -------------------------------------------------------------------------
     // Enums
@@ -59,12 +59,9 @@ contract BluffBid {
         mapping(uint256 => Round) rounds;
     }
 
-    // -------------------------------------------------------------------------
-    // Storage
-    // -------------------------------------------------------------------------
-
     uint256 public matchIdCounter;
     mapping(uint256 => Match) public matches;
+    address public owner;
 
     bool private locked;
 
@@ -100,9 +97,22 @@ contract BluffBid {
         _;
     }
 
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Not owner");
+        _;
+    }
+
     modifier inState(uint256 _matchId, MatchStatus _status) {
         require(matches[_matchId].status == _status, "Invalid match state");
         _;
+    }
+
+    // -------------------------------------------------------------------------
+    // Constructor
+    // -------------------------------------------------------------------------
+
+    constructor() {
+        owner = msg.sender;
     }
 
     // -------------------------------------------------------------------------
@@ -326,6 +336,12 @@ contract BluffBid {
     // -------------------------------------------------------------------------
     // Internal Safe Transfer
     // -------------------------------------------------------------------------
+
+    function withdraw() external onlyOwner {
+        uint256 balance = address(this).balance;
+        require(balance > 0, "No funds to withdraw");
+        _safeTransfer(owner, balance);
+    }
 
     function _safeTransfer(address to, uint256 amount) internal {
         (bool success, ) = payable(to).call{value: amount}("");

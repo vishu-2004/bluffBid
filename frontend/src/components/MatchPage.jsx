@@ -137,6 +137,7 @@ const MatchPage = () => {
             rounds,
             _completedRounds: completedRounds,
             _status: Number(state.status),
+            _lastActionTime: Number(state.lastActionTime),
             _p1Wins: Number(state.player1.wins ?? state.player1[1]),
             _p2Wins: Number(state.player2.wins ?? state.player2[1]),
         };
@@ -193,6 +194,19 @@ const MatchPage = () => {
             try {
                 const updated = await fetchMatchState(matchData.rounds);
                 setMatchData(updated);
+
+                // Check for timeout (10 minutes = 600s)
+                const now = Math.floor(Date.now() / 1000);
+                const elapsed = now - updated._lastActionTime;
+                
+                if (updated._status === 1 && elapsed > 600) {
+                    console.warn(`Match ${id} timed out (${elapsed}s). Auto-claiming...`);
+                    try {
+                        await fetch(getApiUrl(`/api/match/${id}/claim-timeout`), { method: 'POST' });
+                    } catch (timeoutErr) {
+                        console.error('Failed to auto-claim timeout:', timeoutErr);
+                    }
+                }
 
                 // Reveal new rounds
                 if (updated.rounds.length > visibleRounds) {

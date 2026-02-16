@@ -92,4 +92,34 @@ router.get('/:id', async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/match/{id}/claim-timeout:
+ *   post:
+ *     summary: Claim timeout for a match
+ *     tags: [Match]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Timeout claimed
+ *       500:
+ *         description: Failed to claim timeout
+ */
+router.post('/:id/claim-timeout', async (req, res) => {
+    const { id } = req.params;
+    try {
+        // We'll use the aggressive wallet (owner) as a default to claim the timeout
+        const { strategyWallets, claimTimeout: contractClaimTimeout } = await import('../services/contract.js');
+        const hash = await contractClaimTimeout(strategyWallets.aggressive, BigInt(id));
+        res.json({ message: "Timeout claimed", transactionHash: hash });
+    } catch (e) {
+        res.status(500).json({ error: "Failed to claim timeout", details: e.message });
+    }
+});
+
 export default router;
