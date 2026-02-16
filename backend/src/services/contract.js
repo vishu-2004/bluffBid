@@ -49,7 +49,7 @@ if (isProd && !process.env.CONTRACT_ADDRESS) {
 const transport = http(rpcUrl);
 
 // Load ABI from artifacts
-const artifactPath = '../../../contracts/artifacts/contracts/BluffBid.sol/BluffBid.json';
+const artifactPath = '../abi/BluffBid.json';
 const artifact = JSON.parse(fs.readFileSync(new URL(artifactPath, import.meta.url)));
 
 const contractAddress = process.env.CONTRACT_ADDRESS;
