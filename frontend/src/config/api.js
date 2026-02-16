@@ -1,6 +1,6 @@
 // API configuration
 // Uses VITE_BACKEND from environment variables, falls back to empty string (relative URLs)
-export const API_BASE_URL = import.meta.env.VITE_BACKEND || 'http://3.6.50.90:3000g';
+export const API_BASE_URL = import.meta.env.VITE_BACKEND || 'http://3.6.50.90:3000';
 
 /**
  * Get the full API URL for an endpoint
