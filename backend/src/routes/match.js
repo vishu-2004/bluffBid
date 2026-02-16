@@ -122,4 +122,44 @@ router.post('/:id/claim-timeout', async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/match/{id}/cancel:
+ *   post:
+ *     summary: Cancel a match (only if in WaitingForPlayer state)
+ *     tags: [Match]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Match cancelled
+ *       500:
+ *         description: Failed to cancel match
+ */
+router.post('/:id/cancel', async (req, res) => {
+    const { id } = req.params;
+    try {
+        const { strategyWallets, cancelMatch: contractCancelMatch, getMatchState: contractGetState } = await import('../services/contract.js');
+
+        // We need to know who the creator was (player1) to call cancelMatch
+        const state = await contractGetState(BigInt(id));
+        const creatorAddr = state.player1.addr.toLowerCase();
+
+        // Find which strategy wallet matches the creator
+        let wallet;
+        if (strategyWallets.aggressive.account.address.toLowerCase() === creatorAddr) wallet = strategyWallets.aggressive;
+        else if (strategyWallets.conservative.account.address.toLowerCase() === creatorAddr) wallet = strategyWallets.conservative;
+        else wallet = strategyWallets.adaptive;
+
+        const hash = await contractCancelMatch(wallet, BigInt(id));
+        res.json({ message: "Match cancelled", transactionHash: hash });
+    } catch (e) {
+        res.status(500).json({ error: "Failed to cancel match", details: e.message });
+    }
+});
+
 export default router;

@@ -208,6 +208,16 @@ const MatchPage = () => {
                     }
                 }
 
+                // Check for stuck match (WaitingForPlayer for > 2 mins)
+                if (updated._status === 0 && elapsed > 120) {
+                    console.warn(`Match ${id} stuck in WaitingForPlayer (${elapsed}s). Auto-cancelling...`);
+                    try {
+                        await fetch(getApiUrl(`/api/match/${id}/cancel`), { method: 'POST' });
+                    } catch (cancelErr) {
+                        console.error('Failed to auto-cancel stuck match:', cancelErr);
+                    }
+                }
+
                 // Reveal new rounds
                 if (updated.rounds.length > visibleRounds) {
                     setVisibleRounds(updated.rounds.length);
@@ -292,6 +302,16 @@ const MatchPage = () => {
         );
     }
 
+    const handleManualCancel = async () => {
+        try {
+            await fetch(getApiUrl(`/api/match/${id}/cancel`), { method: 'POST' });
+            alert("Cancellation request sent.");
+        } catch (err) {
+            console.error(err);
+            alert("Failed to cancel match.");
+        }
+    };
+
     // Error state
     if (error || !matchData) {
         return (
@@ -353,6 +373,15 @@ const MatchPage = () => {
                                     style={{ background: 'linear-gradient(135deg, #7C3AED, #9F67FF)' }}>
                                     ⚔ ROUND {stats.currentRound + 1} — REVEALING...
                                 </span>
+                            )}
+                            
+                            {matchData?._status === 0 && (
+                                <button 
+                                    onClick={handleManualCancel}
+                                    className="ml-4 px-4 py-2 border border-danger/50 text-danger hover:bg-danger/10 text-xs font-heading tracking-widest uppercase transition-colors"
+                                >
+                                    Cancel Match (Refund)
+                                </button>
                             )}
                         </div>
                     </div>

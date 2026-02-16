@@ -1,4 +1,4 @@
-import { createMatch, joinMatch, commitBid, revealBid, getMatchState, strategyWallets, publicClient, MAX_BID_SCALED } from './contract.js';
+import { createMatch, joinMatch, commitBid, revealBid, getMatchState, strategyWallets, publicClient, MAX_BID_SCALED, cancelMatch } from './contract.js';
 import { aggressive } from '../agents/aggressive.js';
 import { conservative } from '../agents/conservative.js';
 import { monteCarlo } from '../agents/monteCarlo.js';
@@ -54,9 +54,7 @@ export async function runMatch(agentAName, agentBName) {
         const hash = await createMatch(walletA);
         // Wait for receipt to get ID
         const receipt = await publicClient.waitForTransactionReceipt({ hash });
-        // Extract matchId from logs. 
-        // Event MatchCreated(uint256 indexed matchId, address indexed creator);
-        // Topic 0: Sig, Topic 1: MatchId, Topic 2: Creator
+
         console.log(receipt.logs);
         if (!receipt.logs || receipt.logs.length === 0) {
             throw new Error('createMatch transaction produced no logs — check RPC compatibility and contract deployment.');
@@ -103,6 +101,17 @@ export async function runMatch(agentAName, agentBName) {
                 });
             } catch (bgError) {
                 console.error(`Match ${matchId} Background Execution Error:`, bgError);
+                // If the error happened during joining or playing, try to cancel if possible
+                try {
+                    const currentState = await getMatchState(matchId);
+                    if (Number(currentState.status) === 0) { // WaitingForPlayer
+                        console.log(`Match ${matchId}: Attempting auto-cancel after failure...`);
+                        await cancelMatch(walletA, matchId);
+                        console.log(`Match ${matchId}: Auto-cancelled successfully.`);
+                    }
+                } catch (cancelErr) {
+                    console.error(`Match ${matchId}: Failed to auto-cancel:`, cancelErr);
+                }
             }
         })();
 
@@ -136,18 +145,13 @@ export class GameEngine {
             return;
         }
 
-        // Contract now stores balances directly in scaled units (40 = 4.0 MON)
-        // No conversion needed - balances are already in scaled units
         const balance1Scaled = Number(state.player1.balance);
         const balance2Scaled = Number(state.player2.balance);
 
-        // Edge case: If both balances are 0, both must bid 0
-        // We'll still commit/reveal so the contract can resolve the round
         if (balance1Scaled === 0 && balance2Scaled === 0) {
             console.log(`Match ${this.matchId}: Both balances exhausted on round ${round}, both will bid 0`);
         }
 
-        // Build round history from each player's perspective (bids are already in scaled units)
         const roundHistoryA = this.history.map(h => ({
             round: h.round,
             myBid: h.p1Bid,
@@ -162,7 +166,6 @@ export class GameEngine {
             result: h.p2Bid > h.p1Bid ? 'You won' : h.p2Bid < h.p1Bid ? 'You lost' : 'Tie'
         }));
 
-        // Transform to local state for agents (all values in scaled units)
         const gameStateA = {
             roundNumber: Number(state.currentRound),
             myBalance: balance1Scaled,
@@ -183,14 +186,11 @@ export class GameEngine {
             roundHistory: roundHistoryB
         };
 
-        // 2. Decide Bids in parallel (await supports both sync and async agents)
         const [decisionA, decisionB] = await Promise.all([
             this.agentA.decide(gameStateA),
             this.agentB.decide(gameStateB)
         ]);
 
-        // Edge case validation: Ensure bids are valid
-        // If either balance is 0, their bid must be 0
         let bidA = Math.max(0, Math.min(MAX_BID_SCALED, decisionA.bid));
         if (balance1Scaled === 0) {
             bidA = 0;
@@ -204,7 +204,6 @@ export class GameEngine {
             bidA = 0;
         }
 
-        // Validate bid B
         let bidB = Math.max(0, Math.min(MAX_BID_SCALED, decisionB.bid));
         if (balance2Scaled === 0) {
             bidB = 0;
@@ -218,8 +217,6 @@ export class GameEngine {
             bidB = 0;
         }
 
-        // If both bids are 0 (both out of balance), still commit/reveal so contract can resolve
-        // The contract will handle the tie and advance to next round (or end if round 5)
         if (bidA === 0 && bidB === 0) {
             console.log(`Match ${this.matchId}: Both agents have 0 balance, both bidding 0 (tie round)`);
         }
@@ -227,7 +224,6 @@ export class GameEngine {
         console.log(`Agent A [${decisionA.reason}] -> Bid: ${bidA} (${(bidA / 10).toFixed(1)} MON)`);
         console.log(`Agent B [${decisionB.reason}] -> Bid: ${bidB} (${(bidB / 10).toFixed(1)} MON)`);
 
-        // 3. Commit Phase
         const saltA = generateSalt();
         const saltB = generateSalt();
 
@@ -246,20 +242,17 @@ export class GameEngine {
         const r2 = await revealBid(this.walletB, this.matchId, bidB, saltB);
         await publicClient.waitForTransactionReceipt({ hash: r2 });
 
-        // 4. Record enriched history with round outcome and NEW BALANCE
-        // Need to fetch state again to get updated balances
         const postRoundState = await getMatchState(this.matchId);
 
-        // Balances are already in scaled units (no conversion needed)
         const postBalance1Scaled = Number(postRoundState.player1.balance);
         const postBalance2Scaled = Number(postRoundState.player2.balance);
 
         this.history.push({
             round,
-            p1Bid: bidA, // Store in scaled units
-            p2Bid: bidB, // Store in scaled units
-            balanceA: postBalance1Scaled, // Store in scaled units
-            balanceB: postBalance2Scaled, // Store in scaled units
+            p1Bid: bidA,
+            p2Bid: bidB,
+            balanceA: postBalance1Scaled,
+            balanceB: postBalance2Scaled,
             winner: bidA > bidB ? 'A' : bidA < bidB ? 'B' : 'Tie'
         });
 

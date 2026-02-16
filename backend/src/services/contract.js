@@ -159,6 +159,11 @@ export async function claimTimeout(client, matchId) {
     return await writeContract(client, 'claimTimeout', [matchId]);
 }
 
+// Cancel Match
+export async function cancelMatch(client, matchId) {
+    return await writeContract(client, 'cancelMatch', [matchId]);
+}
+
 // Get Match State
 export async function getMatchState(matchId) {
     try {
