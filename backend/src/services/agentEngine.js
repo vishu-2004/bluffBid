@@ -229,18 +229,37 @@ export class GameEngine {
 
         console.log("Committing Bids...");
         const c1 = await commitBid(this.walletA, this.matchId, bidA, saltA);
-        await publicClient.waitForTransactionReceipt({ hash: c1 });
+        const c1Receipt = await publicClient.waitForTransactionReceipt({ hash: c1 });
+        if (c1Receipt.status === 'reverted') {
+            throw new Error(`Player A commitBid reverted (tx: ${c1})`);
+        }
+        console.log(`Player A commit confirmed (block ${c1Receipt.blockNumber})`);
 
         const c2 = await commitBid(this.walletB, this.matchId, bidB, saltB);
-        await publicClient.waitForTransactionReceipt({ hash: c2 });
+        const c2Receipt = await publicClient.waitForTransactionReceipt({ hash: c2 });
+        if (c2Receipt.status === 'reverted') {
+            throw new Error(`Player B commitBid reverted (tx: ${c2})`);
+        }
+        console.log(`Player B commit confirmed (block ${c2Receipt.blockNumber})`);
+
+        // Wait for state propagation on fast chains (Monad)
+        await delay(2000);
 
         console.log("Bids Committed. Revealing...");
 
         const r1 = await revealBid(this.walletA, this.matchId, bidA, saltA);
-        await publicClient.waitForTransactionReceipt({ hash: r1 });
+        const r1Receipt = await publicClient.waitForTransactionReceipt({ hash: r1 });
+        if (r1Receipt.status === 'reverted') {
+            throw new Error(`Player A revealBid reverted (tx: ${r1})`);
+        }
+        console.log(`Player A reveal confirmed (block ${r1Receipt.blockNumber})`);
 
         const r2 = await revealBid(this.walletB, this.matchId, bidB, saltB);
-        await publicClient.waitForTransactionReceipt({ hash: r2 });
+        const r2Receipt = await publicClient.waitForTransactionReceipt({ hash: r2 });
+        if (r2Receipt.status === 'reverted') {
+            throw new Error(`Player B revealBid reverted (tx: ${r2})`);
+        }
+        console.log(`Player B reveal confirmed (block ${r2Receipt.blockNumber})`);
 
         const postRoundState = await getMatchState(this.matchId);
 
