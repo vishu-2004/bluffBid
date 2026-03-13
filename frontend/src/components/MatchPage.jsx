@@ -45,6 +45,7 @@ const MatchPage = () => {
     const [usingMockData, setUsingMockData] = useState(false);
     const pollRef = useRef(null);
     const prevRoundRef = useRef(0);
+    const revealTimersRef = useRef([]);
 
     // Transform on-chain state into the matchData shape the UI expects
     const transformApiState = (state, existingRounds = []) => {
@@ -218,16 +219,28 @@ const MatchPage = () => {
                     }
                 }
 
-                // Reveal new rounds
+                // Reveal new rounds one at a time with 1s delay
                 if (updated.rounds.length > visibleRounds) {
-                    setVisibleRounds(updated.rounds.length);
+                    // Clear any pending reveal timers
+                    revealTimersRef.current.forEach(t => clearTimeout(t));
+                    revealTimersRef.current = [];
+
+                    const newRoundsCount = updated.rounds.length - visibleRounds;
+                    for (let i = 0; i < newRoundsCount; i++) {
+                        const timer = setTimeout(() => {
+                            setVisibleRounds(prev => prev + 1);
+                        }, (i + 1) * 1000); // 1s delay per round
+                        revealTimersRef.current.push(timer);
+                    }
                 }
 
                 // Check if match is done
                 if (isMatchDone(updated)) {
                     clearInterval(pollRef.current);
                     pollRef.current = null;
-                    setTimeout(() => setShowResultPopup(true), 1500);
+                    // Wait for all rounds to be revealed + 1s before showing popup
+                    const revealTime = Math.max(0, updated.rounds.length - visibleRounds) * 1000;
+                    setTimeout(() => setShowResultPopup(true), revealTime + 1500);
                 }
             } catch (err) {
                 console.error('Polling error:', err);
@@ -239,6 +252,8 @@ const MatchPage = () => {
                 clearInterval(pollRef.current);
                 pollRef.current = null;
             }
+            revealTimersRef.current.forEach(t => clearTimeout(t));
+            revealTimersRef.current = [];
         };
     }, [matchData, usingMockData, visibleRounds]);
 
