@@ -26,6 +26,26 @@ const AGENTS = {
 const generateSalt = () => toHex(crypto.getRandomValues(new Uint8Array(32)));
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+// Monad RPC state propagation delay (ms)
+const RPC_PROPAGATION_DELAY = 3000;
+
+/**
+ * Poll getMatchState until the expected status is seen.
+ * This works around Monad testnet RPC lag where state reads
+ * return stale data right after a state-changing transaction.
+ */
+async function waitForMatchState(matchId, expectedStatus, maxRetries = 10, intervalMs = 2000) {
+    for (let i = 0; i < maxRetries; i++) {
+        const state = await getMatchState(matchId);
+        if (Number(state.status) === expectedStatus) {
+            return state;
+        }
+        console.log(`  Waiting for match ${matchId} status to become ${expectedStatus} (currently ${state.status}), attempt ${i + 1}/${maxRetries}...`);
+        await delay(intervalMs);
+    }
+    throw new Error(`Match ${matchId} did not reach expected status ${expectedStatus} after ${maxRetries} retries`);
+}
+
 // Map agent name → strategy key for wallet lookup
 function getStrategyKey(agentName) {
     const lower = agentName.toLowerCase();
@@ -68,8 +88,16 @@ export async function runMatch(agentAName, agentBName) {
                 // 2. Join Match
                 console.log(`Match ${matchId}: Joining...`);
                 const joinHash = await joinMatch(walletB, matchId);
-                await publicClient.waitForTransactionReceipt({ hash: joinHash });
-                console.log(`Match ${matchId}: Player 2 Joined.`);
+                const joinReceipt = await publicClient.waitForTransactionReceipt({ hash: joinHash });
+                if (joinReceipt.status === 'reverted') {
+                    throw new Error(`joinMatch reverted (tx: ${joinHash})`);
+                }
+                console.log(`Match ${matchId}: Player 2 Joined (block ${joinReceipt.blockNumber}).`);
+
+                // Wait for RPC to reflect Active status before proceeding
+                console.log(`Match ${matchId}: Waiting for RPC state propagation...`);
+                await waitForMatchState(matchId, 1); // 1 = Active
+                console.log(`Match ${matchId}: State confirmed Active.`);
 
                 const engine = new GameEngine(matchId, agentAName, agentBName, walletA, walletB);
                 matchExecutors[matchId.toString()] = engine; // Store for API
@@ -78,6 +106,8 @@ export async function runMatch(agentAName, agentBName) {
 
                 for (let i = 1; i <= 5; i++) {
                     await engine.playRound(i);
+                    // Delay between rounds for RPC state propagation
+                    if (i < 5) await delay(RPC_PROPAGATION_DELAY);
                 }
 
                 console.log(`\n=== Match ${matchId} Completed ===`);
@@ -235,6 +265,9 @@ export class GameEngine {
         }
         console.log(`Player A commit confirmed (block ${c1Receipt.blockNumber})`);
 
+        // Delay between commits for RPC propagation
+        await delay(RPC_PROPAGATION_DELAY);
+
         const c2 = await commitBid(this.walletB, this.matchId, bidB, saltB);
         const c2Receipt = await publicClient.waitForTransactionReceipt({ hash: c2 });
         if (c2Receipt.status === 'reverted') {
@@ -242,8 +275,8 @@ export class GameEngine {
         }
         console.log(`Player B commit confirmed (block ${c2Receipt.blockNumber})`);
 
-        // Wait for state propagation on fast chains (Monad)
-        await delay(2000);
+        // Wait for both commits to propagate before revealing
+        await delay(RPC_PROPAGATION_DELAY);
 
         console.log("Bids Committed. Revealing...");
 
@@ -253,6 +286,9 @@ export class GameEngine {
             throw new Error(`Player A revealBid reverted (tx: ${r1})`);
         }
         console.log(`Player A reveal confirmed (block ${r1Receipt.blockNumber})`);
+
+        // Delay between reveals for RPC propagation
+        await delay(RPC_PROPAGATION_DELAY);
 
         const r2 = await revealBid(this.walletB, this.matchId, bidB, saltB);
         const r2Receipt = await publicClient.waitForTransactionReceipt({ hash: r2 });
