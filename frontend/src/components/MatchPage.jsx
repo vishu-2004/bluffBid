@@ -45,7 +45,6 @@ const MatchPage = () => {
     const [usingMockData, setUsingMockData] = useState(false);
     const pollRef = useRef(null);
     const prevRoundRef = useRef(0);
-    const revealTimersRef = useRef([]);
 
     // Transform on-chain state into the matchData shape the UI expects
     const transformApiState = (state, existingRounds = []) => {
@@ -199,7 +198,7 @@ const MatchPage = () => {
                 // Check for timeout (10 minutes = 600s)
                 const now = Math.floor(Date.now() / 1000);
                 const elapsed = now - updated._lastActionTime;
-                
+
                 if (updated._status === 1 && elapsed > 600) {
                     console.warn(`Match ${id} timed out (${elapsed}s). Auto-claiming...`);
                     try {
@@ -221,17 +220,7 @@ const MatchPage = () => {
 
                 // Reveal new rounds one at a time with 1s delay
                 if (updated.rounds.length > visibleRounds) {
-                    // Clear any pending reveal timers
-                    revealTimersRef.current.forEach(t => clearTimeout(t));
-                    revealTimersRef.current = [];
-
-                    const newRoundsCount = updated.rounds.length - visibleRounds;
-                    for (let i = 0; i < newRoundsCount; i++) {
-                        const timer = setTimeout(() => {
-                            setVisibleRounds(prev => prev + 1);
-                        }, (i + 1) * 1000); // 1s delay per round
-                        revealTimersRef.current.push(timer);
-                    }
+                    setVisibleRounds(updated.rounds.length);
                 }
 
                 // Check if match is done
@@ -239,8 +228,7 @@ const MatchPage = () => {
                     clearInterval(pollRef.current);
                     pollRef.current = null;
                     // Wait for all rounds to be revealed + 1s before showing popup
-                    const revealTime = Math.max(0, updated.rounds.length - visibleRounds) * 1000;
-                    setTimeout(() => setShowResultPopup(true), revealTime + 1500);
+                    setTimeout(() => setShowResultPopup(true), 3000);
                 }
             } catch (err) {
                 console.error('Polling error:', err);
@@ -252,8 +240,6 @@ const MatchPage = () => {
                 clearInterval(pollRef.current);
                 pollRef.current = null;
             }
-            revealTimersRef.current.forEach(t => clearTimeout(t));
-            revealTimersRef.current = [];
         };
     }, [matchData, usingMockData, visibleRounds]);
 
@@ -389,9 +375,9 @@ const MatchPage = () => {
                                     ⚔ ROUND {stats.currentRound + 1} — REVEALING...
                                 </span>
                             )}
-                            
+
                             {matchData?._status === 0 && (
-                                <button 
+                                <button
                                     onClick={handleManualCancel}
                                     className="ml-4 px-4 py-2 border border-danger/50 text-danger hover:bg-danger/10 text-xs font-heading tracking-widest uppercase transition-colors"
                                 >
@@ -689,15 +675,15 @@ const MatchPage = () => {
                             <Link to="/analytics" className="btn-secondary text-base">
                                 VIEW ANALYTICS
                             </Link>
-                            <button 
-                                onClick={() => setShowResultPopup(false)} 
+                            <button
+                                onClick={() => setShowResultPopup(false)}
                                 className="btn-secondary text-base border-text-muted/30 hover:border-text-muted/50"
                             >
                                 VIEW DETAILS
                             </button>
                         </div>
                     </div>
-                    
+
                     {/* Close Button (X) */}
                     <button
                         onClick={() => setShowResultPopup(false)}
