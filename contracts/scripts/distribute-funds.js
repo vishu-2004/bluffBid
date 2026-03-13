@@ -7,10 +7,9 @@ dotenv.config();
  * AGGRESSIVE, CONSERVATIVE, ADAPTIVE
  * 
  * Logic:
- * 1. Fetch balances of all 3 agents and the smart contract.
- * 2. Withdraw all funds from the smart contract to the AGGRESSIVE account (owner).
- * 3. Calculate the total balance.
- * 4. Distribute the total balance equally among the 3 accounts.
+ * 1. Fetch balances of all 3 agent wallets.
+ * 2. Calculate the total balance.
+ * 3. Distribute the total balance equally among the 3 accounts.
  */
 
 async function main() {
@@ -23,10 +22,8 @@ async function main() {
         ADAPTIVE: process.env.PRIVATE_KEY_ADAPTIVE
     };
 
-    const contractAddress = process.env.CONTRACT_ADDRESS;
-
-    if (!privateKeys.AGGRESSIVE || !privateKeys.CONSERVATIVE || !privateKeys.ADAPTIVE || !contractAddress) {
-        console.error("Error: Missing required environment variables in .env");
+    if (!privateKeys.AGGRESSIVE || !privateKeys.CONSERVATIVE || !privateKeys.ADAPTIVE) {
+        console.error("Error: Missing agent private keys in .env");
         process.exit(1);
     }
 
@@ -38,10 +35,13 @@ async function main() {
     const wallets = [walletAggressive, walletConservative, walletAdaptive];
     const names = ["AGGRESSIVE", "CONSERVATIVE", "ADAPTIVE"];
 
-    console.log("--- Fetching Current Balances ---");
+    const network = await provider.getNetwork();
+    console.log(`Connected to network: ${network.name} (Chain ID: ${network.chainId})`);
+
+    console.log("--- Fetching Current Wallet Balances ---");
 
     let balances = [];
-    let totalBalance = hre.ethers.parseEther("0");
+    let totalBalance = 0n; // Use BigInt literal for consistency
 
     for (let i = 0; i < wallets.length; i++) {
         const bal = await provider.getBalance(wallets[i].address);
@@ -50,47 +50,10 @@ async function main() {
         console.log(`${names[i]} (${wallets[i].address}): ${hre.ethers.formatEther(bal)} MON`);
     }
 
-    const contractBalance = await provider.getBalance(contractAddress);
-    totalBalance += contractBalance;
-    console.log(`Smart Contract (${contractAddress}): ${hre.ethers.formatEther(contractBalance)} MON`);
+    console.log(`\nTotal Pool in Wallets: ${hre.ethers.formatEther(totalBalance)} MON`);
 
-    console.log(`\nTotal Pool: ${hre.ethers.formatEther(totalBalance)} MON`);
-
-    // 1. Withdraw funds from contract if any
-    if (contractBalance > 0n) {
-        console.log("\n--- Withdrawing funds from Smart Contract ---");
-        try {
-            // We need the contract ABI to call withdraw()
-            // Using a minimal ABI for the withdraw function
-            const contract = new hre.ethers.Contract(
-                contractAddress,
-                ["function withdraw() external"],
-                walletAggressive
-            );
-
-            console.log("Calling withdraw()...");
-            const tx = await contract.withdraw();
-            await tx.wait();
-            console.log("Withdrawal successful.");
-
-            // Refresh aggressive balance
-            const newAggressiveBal = await provider.getBalance(walletAggressive.address);
-            balances[0] = newAggressiveBal;
-        } catch (error) {
-            console.error("Error withdrawing from contract:", error.message);
-            console.log("Proceeding with existing wallet balances...");
-        }
-    }
-
-    // Recalculate total balance in wallets (contract balance is now in walletAggressive)
-    let currentTotal = 0n;
-    for (let i = 0; i < wallets.length; i++) {
-        balances[i] = await provider.getBalance(wallets[i].address);
-        currentTotal += balances[i];
-    }
-
-    const targetBalance = currentTotal / 3n;
-    console.log(`\nTarget balance per account: ${hre.ethers.formatEther(targetBalance)} MON`);
+    const targetBalance = totalBalance / 3n;
+    console.log(`Target balance per account: ${hre.ethers.formatEther(targetBalance)} MON`);
 
     console.log("\n--- Distributing Funds ---");
 

@@ -16,6 +16,9 @@ async function main() {
     const provider = hre.ethers.provider;
     const contractAddress = process.env.CONTRACT_ADDRESS;
 
+    const network = await provider.getNetwork();
+    console.log(`Connected to network: ${network.name} (Chain ID: ${network.chainId})`);
+
     if (!contractAddress) {
         console.error("Error: CONTRACT_ADDRESS not found in .env");
         process.exit(1);
